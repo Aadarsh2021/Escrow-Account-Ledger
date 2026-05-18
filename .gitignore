@@ -36,6 +36,7 @@ lerna-debug.log*
 .env.production.local
 *.env.local
 .env.*
+!.env.example
 
 # Firebase State Files
 .firebase/
