@@ -152,14 +152,21 @@ const TransactionReport = () => {
       if (linkedIds.length > 0) {
         const { data: partnerData, error: partnerErr } = await supabase
           .from('transactions')
-          .select('linked_transaction_id, party_id, parties(party_name)')
+          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
           .in('linked_transaction_id', linkedIds);
 
         if (!partnerErr && partnerData) {
           processedTns = rawTns.map(t => {
             let partnerName = '-';
             if (t.linked_transaction_id) {
-              const partner = partnerData.find(p => p.linked_transaction_id === t.linked_transaction_id && p.party_id !== t.party_id);
+              const potentialPartners = partnerData.filter(p => p.linked_transaction_id === t.linked_transaction_id && p.party_id !== t.party_id);
+              const partner = potentialPartners.find(p => {
+                const sysType = Array.isArray(p.parties)
+                  ? (p.parties[0] as any)?.system_type
+                  : (p.parties as any)?.system_type;
+                return sysType !== 'commission';
+              }) || potentialPartners[0];
+
               if (partner && partner.parties) {
                 const pName = Array.isArray(partner.parties)
                   ? (partner.parties[0] as any)?.party_name

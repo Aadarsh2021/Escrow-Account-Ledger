@@ -53,6 +53,16 @@ interface Transaction {
 
 const ITEMS_PER_PAGE = 20;
 
+const generateUUID = () => {
+  return typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+};
+
 const LedgerView = () => {
   const navigate = useNavigate();
   const { user: authUser } = useAuth();
@@ -194,12 +204,18 @@ const LedgerView = () => {
       const currentTns = tnsData || [];
       const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
       if (linkedIds.length > 0) {
-        const { data: partnerData } = await supabase.from('transactions').select('linked_transaction_id, party_id, parties(party_name)').in('linked_transaction_id', linkedIds).neq('party_id', partyId);
+        const { data: partnerData } = await supabase
+          .from('transactions')
+          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
+          .in('linked_transaction_id', linkedIds)
+          .neq('party_id', partyId);
         
         if (partnerData) {
           const partnerMap = new Map<string, string>();
           partnerData.forEach((p: any) => {
-            partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+            if (p.parties?.system_type !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
+              partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+            }
           });
           
           currentTns.forEach(t => {
@@ -565,7 +581,7 @@ const LedgerView = () => {
       const primaryType = numAmt > 0 ? 'CR' : 'DR';
       const secondaryType = numAmt > 0 ? 'DR' : 'CR';
 
-      const isNewThreeWay = selectedParty.status === 'give' && editFormData.linkedParty.system_type === 'company';
+      const isNewThreeWay = false;
 
       // First delete all existing transactions under this linked_transaction_id
       const { error: delError } = await supabase
@@ -578,7 +594,6 @@ const LedgerView = () => {
       if (isNewThreeWay) {
         // Calculate commission (1%)
         const commissionAmt = parseFloat((absAmt * 0.01).toFixed(2));
-        const netAmt = parseFloat((absAmt - commissionAmt).toFixed(2));
 
         // Find or fetch the commission party
         const { data: commParties } = await supabase
@@ -598,8 +613,8 @@ const LedgerView = () => {
           getBalance(commissionParty.id)
         ]);
 
-        const firstPartyCredit = primaryType === 'CR' ? netAmt : 0;
-        const firstPartyDebit = primaryType === 'DR' ? netAmt : 0;
+        const firstPartyCredit = primaryType === 'CR' ? absAmt : 0;
+        const firstPartyDebit = primaryType === 'DR' ? absAmt : 0;
         const newBalActive = balActive + firstPartyCredit - firstPartyDebit;
 
         const companyCredit = secondaryType === 'CR' ? absAmt : 0;
@@ -623,7 +638,7 @@ const LedgerView = () => {
             balance: newBalActive
           },
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             user_id: authUser.id,
             party_id: editFormData.linkedParty.id,
             linked_transaction_id: anchorId,
@@ -634,7 +649,7 @@ const LedgerView = () => {
             balance: newBalCompany
           },
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             user_id: authUser.id,
             party_id: commissionParty.id,
             linked_transaction_id: anchorId,
@@ -676,7 +691,7 @@ const LedgerView = () => {
             balance: newBalA
           },
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             user_id: authUser.id,
             party_id: editFormData.linkedParty.id,
             linked_transaction_id: anchorId,
@@ -744,10 +759,18 @@ const LedgerView = () => {
       
       // Filter out settlement and commission records
       const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
-      const totalVolume = mainTns.reduce((sum, t) => sum + (isTake ? t.credit : t.debit), 0);
+      
+      let totalVolume = 0;
+      if (isTake) {
+        totalVolume = mainTns.reduce((sum, t) => sum + t.credit, 0);
+      } else {
+        const companyParty = parties.find(p => p.system_type === 'company');
+        const companyTns = mainTns.filter(t => t.partner_party_name === companyParty?.party_name);
+        totalVolume = companyTns.reduce((sum, t) => sum + t.credit, 0);
+      }
+      
       const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
       
-      // If 'take' party, debit them (-). If 'give' party, credit them (+).
       const amountSign = isTake ? '-' : '';
       setAmount(`${amountSign}${calculatedComm.toFixed(2)}`);
       setRemarks('COMMISSION');
@@ -765,8 +788,8 @@ const LedgerView = () => {
   const filteredEditLinkedParties = parties.filter(p => p.id !== selectedParty?.id && (p.party_name.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(editFormData.linkedSearch.toLowerCase())));
 
   const firstEditLinkedMatch = editFormData.linkedSearch
-    ? filteredEditLinkedParties.find(p => p.party_name.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()))
-    : null;
+     ? filteredEditLinkedParties.find(p => p.party_name.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()))
+     : null;
 
   const selectEditLinkedParty = (party: Party) => {
     setEditFormData(prev => ({
@@ -782,7 +805,16 @@ const LedgerView = () => {
         ? transactions 
         : transactions.slice(transactions.length - lastCommIdx);
       const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
-      const totalVolume = mainTns.reduce((sum, t) => sum + (isTake ? t.credit : t.debit), 0);
+      
+      let totalVolume = 0;
+      if (isTake) {
+        totalVolume = mainTns.reduce((sum, t) => sum + t.credit, 0);
+      } else {
+        const companyParty = parties.find(p => p.system_type === 'company');
+        const companyTns = mainTns.filter(t => t.partner_party_name === companyParty?.party_name);
+        totalVolume = companyTns.reduce((sum, t) => sum + t.credit, 0);
+      }
+      
       const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
       
       const amountSign = isTake ? '-' : '';
@@ -804,20 +836,13 @@ const LedgerView = () => {
       const firstPartyType = numAmt > 0 ? 'CR' : 'DR';
       const secondPartyType = numAmt > 0 ? 'DR' : 'CR';
 
-      const chainId = typeof crypto.randomUUID === 'function' 
-        ? crypto.randomUUID() 
-        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-            const r = Math.random() * 16 | 0;
-            const v = c === 'x' ? r : (r & 0x3 | 0x8);
-            return v.toString(16);
-          });
+      const chainId = generateUUID();
 
-      const isThreeWay = selectedParty.status === 'give' && linkedParty.system_type === 'company';
+      const isThreeWay = false;
 
       if (isThreeWay) {
         // Calculate commission (1%)
         const commissionAmt = parseFloat((absAmt * 0.01).toFixed(2));
-        const netAmt = parseFloat((absAmt - commissionAmt).toFixed(2));
 
         // Find the commission party
         const { data: commParties } = await supabase
@@ -836,8 +861,8 @@ const LedgerView = () => {
           getBalance(commissionParty.id)
         ]);
 
-        const firstPartyCredit = firstPartyType === 'CR' ? netAmt : 0;
-        const firstPartyDebit = firstPartyType === 'DR' ? netAmt : 0;
+        const firstPartyCredit = firstPartyType === 'CR' ? absAmt : 0;
+        const firstPartyDebit = firstPartyType === 'DR' ? absAmt : 0;
         const newBalActive = balActive + firstPartyCredit - firstPartyDebit;
 
         const companyCredit = secondPartyType === 'CR' ? absAmt : 0;
@@ -861,7 +886,7 @@ const LedgerView = () => {
             balance: newBalActive
           },
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             user_id: authUser.id,
             party_id: linkedParty.id,
             linked_transaction_id: chainId,
@@ -872,7 +897,7 @@ const LedgerView = () => {
             balance: newBalCompany
           },
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             user_id: authUser.id,
             party_id: commissionParty.id,
             linked_transaction_id: chainId,
@@ -920,7 +945,7 @@ const LedgerView = () => {
             balance: newBalA
           },
           {
-            id: crypto.randomUUID(),
+            id: generateUUID(),
             user_id: authUser.id,
             party_id: linkedParty.id,
             linked_transaction_id: chainId,
@@ -989,7 +1014,7 @@ const LedgerView = () => {
   if (loading) return <GlobalLoader fullScreen={true} />;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
+    <div className="flex flex-col h-auto lg:h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
       {!selectedParty ? (
         <div className="max-w-6xl mx-auto w-full px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -1100,12 +1125,12 @@ const LedgerView = () => {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col h-full overflow-hidden">
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex justify-between items-center shrink-0 shadow-sm z-20 transition-colors duration-200">
-            <div className="flex items-center gap-4">
-              <button onClick={() => setSelectedParty(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all"><ArrowLeft className="w-6 h-6" /></button>
-              <div className="flex items-center gap-4" ref={headerDropdownRef}>
-                <div className="relative w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+        <div className="flex flex-col h-auto lg:h-full lg:overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3 flex flex-col md:flex-row gap-4 md:items-center justify-between shrink-0 shadow-sm z-20 transition-colors duration-200">
+            <div className="flex items-start md:items-center gap-3 md:gap-4">
+              <button onClick={() => setSelectedParty(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0"><ArrowLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
+              <div className="flex flex-wrap items-center gap-2 md:gap-4" ref={headerDropdownRef}>
+                <div className="relative w-full sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
                   {firstHeaderMatch && (
                     <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
@@ -1154,23 +1179,29 @@ const LedgerView = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col justify-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">SR NO: {selectedParty.sr_no}</span>
-                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase ${selectedParty.status === 'take' ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-450'}`}>
-                      {selectedParty.status} {selectedParty.system_type === 'normal' && `(${selectedParty.commission_rate}%)`}
+                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-bold text-sm text-slate-800 dark:text-slate-200 shadow-sm transition-colors">
+                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">SR NO:</span>
+                  <span className="leading-none">{selectedParty.sr_no}</span>
+                </div>
+                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-black text-sm shadow-sm transition-colors">
+                  <span className={`uppercase leading-none ${selectedParty.status === 'take' ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
+                    {selectedParty.status}
+                  </span>
+                  {selectedParty.system_type === 'normal' && (
+                    <span className="text-slate-400 dark:text-slate-500 font-bold leading-none">
+                      ({selectedParty.commission_rate}%)
                     </span>
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
-            <div className="text-right"><p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Closing Balance</p><p className={`text-3xl font-black ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-450' : 'text-rose-600 dark:text-rose-450'}`}>₹ {Math.abs(closingBalance).toLocaleString()}<span className="text-sm ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span></p></div>
+            <div className="text-left md:text-right px-10 md:px-0"><p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Closing Balance</p><p className={`text-2xl md:text-3xl font-black ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-450' : 'text-rose-600 dark:text-rose-450'}`}>₹ {Math.abs(closingBalance).toLocaleString()}<span className="text-sm ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span></p></div>
           </div>
-          <div className="flex flex-grow overflow-hidden">
-            <div className="flex-grow flex flex-col overflow-hidden relative">
-              <div className="flex-grow overflow-y-auto px-6 py-4 bg-slate-50/30 dark:bg-slate-950/10">
-                <div className="bg-white dark:bg-slate-900 rounded-[1.2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden transition-colors duration-200">
-                  <table className="w-full text-left">
+          <div className="flex flex-col lg:flex-row flex-grow lg:overflow-hidden h-auto lg:h-full">
+            <div className="flex-grow flex flex-col h-auto lg:h-full lg:overflow-hidden relative">
+              <div className="flex-grow overflow-y-auto px-4 md:px-6 py-4 bg-slate-50/30 dark:bg-slate-950/10">
+                <div className="bg-white dark:bg-slate-900 rounded-[1.2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto transition-colors duration-200">
+                  <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
                       <tr>
                         <th className="px-6 py-3 text-center"><div onClick={toggleSelectAllTns} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>{selectedTnsIds.size === transactions.length && transactions.length > 0 && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}</div></th>
@@ -1207,8 +1238,8 @@ const LedgerView = () => {
                   </table>
                 </div>
               </div>
-              <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
-                <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex gap-4 items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
+              <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
+                <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="space-y-1.5 col-span-1 relative" ref={dropdownRef}><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
                       <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
@@ -1264,17 +1295,17 @@ const LedgerView = () => {
                     <div className="space-y-1.5 col-span-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label><input ref={amountInputRef} required type="number" step="0.01" placeholder="3000 (CR) or -3000 (DR)" className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getAmountColorClass()}`} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
                     <div className="space-y-1.5 col-span-2"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label><div className="relative"><Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" /><input placeholder="Enter details..." className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div></div>
                   </div>
-                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px]">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
+                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
                 </form>
               </div>
             </div>
-            <div className="w-64 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-4 space-y-2 flex flex-col shrink-0 shadow-sm transition-colors duration-200">
+            <div className="w-full lg:w-64 bg-white dark:bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 p-4 flex flex-row lg:flex-col flex-wrap lg:flex-nowrap gap-2 shrink-0 shadow-sm transition-colors duration-200">
               {sidebarButtons.map((btn) => (
                 <button 
                   key={btn.name} 
                   onClick={btn.action} 
                   disabled={btn.disabled} 
-                  className={`w-full flex items-center gap-4 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] active:scale-95 ${
+                  className={`w-[calc(50%-4px)] sm:w-auto lg:w-full flex items-center gap-2.5 lg:gap-4 px-4 lg:px-5 py-2.5 lg:py-3 rounded-xl font-bold text-xs lg:text-sm transition-all hover:scale-[1.02] active:scale-95 ${
                     btn.color.includes('bg-slate-100') ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' : btn.color
                   } ${btn.disabled ? 'opacity-30 cursor-not-allowed scale-100' : ''}`}
                 >
@@ -1282,9 +1313,9 @@ const LedgerView = () => {
                   {btn.name}
                 </button>
               ))}
-              <div className="flex-grow"></div>
-              <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center">
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">Status</p>
+              <div className="hidden lg:block lg:flex-grow"></div>
+              <div className="w-full lg:w-auto p-3 lg:p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center flex lg:flex-col justify-between lg:justify-center items-center">
+                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest lg:mb-1">Status</p>
                 <div className="text-sm font-black text-slate-900 dark:text-white">{selectedTnsIds.size > 0 ? `${selectedTnsIds.size} Selected` : 'None'}</div>
               </div>
             </div>
@@ -1302,7 +1333,7 @@ const LedgerView = () => {
             <div className="p-8 space-y-6">
               <div className="space-y-1.5 relative" ref={editDropdownRef}>
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
-                <div className="relative bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+                <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
                   <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-455 z-10" />
                   {firstEditLinkedMatch && (
                     <div className="absolute inset-0 pl-11 pr-8 py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
@@ -1339,7 +1370,7 @@ const LedgerView = () => {
                       } 
                     }} 
                   />
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-650 z-10 pointer-events-none" />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-655 z-10 pointer-events-none" />
                   {isEditLinkedSearchOpen && filteredEditLinkedParties.length > 0 && (
                     <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-40 overflow-y-auto z-50">
                       {filteredEditLinkedParties.map((p, i) => (
@@ -1363,7 +1394,7 @@ const LedgerView = () => {
                   type="number" 
                   step="0.01" 
                   placeholder="3000 (CR) or -3000 (DR)" 
-                  className={`w-full px-5 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getEditAmountColorClass()}`} 
+                  className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getEditAmountColorClass()}`} 
                   value={editFormData.amount} 
                   onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })} 
                 />
@@ -1374,7 +1405,7 @@ const LedgerView = () => {
                   <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                   <input 
                     placeholder="Enter details..." 
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
+                    className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
                     value={editFormData.remarks} 
                     onChange={(e) => setEditFormData({ ...editFormData, remarks: e.target.value })} 
                   />

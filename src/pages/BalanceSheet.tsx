@@ -275,9 +275,9 @@ const BalanceSheet = () => {
           </div>
 
           {/* Sub-columns container */}
-          <div className="p-6 grid grid-cols-2 gap-4 flex-grow divide-x divide-slate-100 dark:divide-slate-800 print:p-2 print:divide-slate-300">
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800 print:p-2 print:divide-slate-300">
             {/* Table Column 1 */}
-            <div className="pr-2">
+            <div className="pr-0 md:pr-2 pb-4 md:pb-0">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
                   <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
@@ -306,7 +306,7 @@ const BalanceSheet = () => {
             </div>
 
             {/* Table Column 2 */}
-            <div className="pl-4 print:pl-2">
+            <div className="pl-0 md:pl-4 pt-4 md:pt-0 print:pl-2 print:pt-0">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
                   <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
@@ -375,9 +375,9 @@ const BalanceSheet = () => {
           </div>
 
           {/* Sub-columns container */}
-          <div className="p-6 grid grid-cols-2 gap-4 flex-grow divide-x divide-slate-100 dark:divide-slate-800 print:p-2 print:divide-slate-300">
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800 print:p-2 print:divide-slate-300">
             {/* Table Column 1 */}
-            <div className="pr-2">
+            <div className="pr-0 md:pr-2 pb-4 md:pb-0">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
                   <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
@@ -406,7 +406,7 @@ const BalanceSheet = () => {
             </div>
 
             {/* Table Column 2 */}
-            <div className="pl-4 print:pl-2">
+            <div className="pl-0 md:pl-4 pt-4 md:pt-0 print:pl-2 print:pt-0">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
                   <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">

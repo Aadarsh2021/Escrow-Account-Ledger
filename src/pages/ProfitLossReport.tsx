@@ -133,7 +133,7 @@ const ProfitLossReport = () => {
       if (pageLinkedIds.length > 0) {
         const { data: partnerData, error: partnerErr } = await supabase
           .from('transactions')
-          .select('linked_transaction_id, party_id, parties(party_name)')
+          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
           .in('linked_transaction_id', pageLinkedIds)
           .neq('party_id', activeParty.id);
 
@@ -143,7 +143,13 @@ const ProfitLossReport = () => {
             const pName = Array.isArray(p.parties)
               ? (p.parties[0] as any)?.party_name
               : (p.parties as any)?.party_name;
-            partnerMap.set(p.linked_transaction_id, pName || 'System');
+            const sysType = Array.isArray(p.parties)
+              ? (p.parties[0] as any)?.system_type
+              : (p.parties as any)?.system_type;
+
+            if (sysType !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
+              partnerMap.set(p.linked_transaction_id, pName || 'System');
+            }
           });
 
           rawTns.forEach(t => {
@@ -180,7 +186,7 @@ const ProfitLossReport = () => {
           if (allLinkedIds.length > 0) {
             const { data: allPartners, error: partnersErr } = await supabase
               .from('transactions')
-              .select('linked_transaction_id, parties(party_name)')
+              .select('linked_transaction_id, parties(party_name, system_type)')
               .in('linked_transaction_id', allLinkedIds)
               .neq('party_id', activeParty.id);
 
@@ -190,7 +196,13 @@ const ProfitLossReport = () => {
                 const pName = Array.isArray(p.parties)
                   ? (p.parties[0] as any)?.party_name
                   : (p.parties as any)?.party_name;
-                partnerMap.set(p.linked_transaction_id, pName || 'System');
+                const sysType = Array.isArray(p.parties)
+                  ? (p.parties[0] as any)?.system_type
+                  : (p.parties as any)?.system_type;
+
+                if (sysType !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
+                  partnerMap.set(p.linked_transaction_id, pName || 'System');
+                }
               });
 
               const contributionsMap = new Map<string, { amount: number; count: number }>();

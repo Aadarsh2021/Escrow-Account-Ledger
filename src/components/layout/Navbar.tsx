@@ -209,39 +209,79 @@ const Navbar = () => {
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu Bottom Drawer */}
       {isMobileMenuOpen && (
-        <div className="md:hidden bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 p-4 space-y-4 shadow-lg overflow-y-auto max-h-[80vh] transition-colors duration-200">
-          {user && navItems.map((item) => (
-            <div key={item.name} className="space-y-2">
-              <div className="flex items-center gap-2 px-4 py-2 text-slate-400 dark:text-slate-500 font-bold text-xs uppercase tracking-widest">
-                {item.icon}
-                {item.name}
-              </div>
-              {item.subItems.map((sub) => (
-                <Link
-                  key={sub.name}
-                  to={sub.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 px-8 py-3 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl font-medium transition-colors"
-                >
-                  {sub.icon}
-                  {sub.name}
-                </Link>
-              ))}
+        <>
+          <div className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[80]" onClick={() => setIsMobileMenuOpen(false)} />
+          <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-6 space-y-6 shadow-2xl rounded-t-[2.5rem] overflow-y-auto max-h-[70vh] z-[90] transition-colors duration-200 animate-in slide-in-from-bottom-5">
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+              <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Navigation Menu</span>
+              <button onClick={() => setIsMobileMenuOpen(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-all"><X className="w-5 h-5" /></button>
             </div>
-          ))}
-          {/* Mobile Profile Link */}
-          {user && (
-            <Link
-              to="/profile"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-3 px-8 py-4 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 rounded-xl font-bold transition-colors"
-            >
-              <User className="w-5 h-5" />
-              Manage Profile
-            </Link>
-          )}
+            <div className="space-y-5">
+              {user && navItems.map((item) => (
+                <div key={item.name} className="space-y-2">
+                  <div className="flex items-center gap-2 px-2 text-slate-400 dark:text-slate-500 font-black text-[10px] uppercase tracking-widest">
+                    {item.icon}
+                    {item.name}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {item.subItems.map((sub) => (
+                      <Link
+                        key={sub.name}
+                        to={sub.path}
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex flex-col justify-between p-3 bg-slate-50 dark:bg-slate-950 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl transition-all border border-slate-100 dark:border-slate-900/30"
+                      >
+                        <div className="text-slate-400 dark:text-slate-500 mb-1">{sub.icon}</div>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-350 tracking-tight leading-tight">{sub.name}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {/* Mobile Profile Link */}
+              {user && (
+                <Link
+                  to="/profile"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center justify-between p-4 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-900/20 rounded-2xl font-bold transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <User className="w-5 h-5" />
+                    <span className="text-sm">Manage Profile</span>
+                  </div>
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                </Link>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Mobile Bottom Tab Bar */}
+      {user && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 flex justify-around items-center z-[100] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
+          <Link to="/dashboard" className="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
+            <BarChart3 className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-wider">Home</span>
+          </Link>
+          <Link to="/ledger" className="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
+            <Database className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-wider">Ledger</span>
+          </Link>
+          <Link to="/create/party" className="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
+            <PlusCircle className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-wider">Create</span>
+          </Link>
+          <Link to="/reports/balance" className="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
+            <FileText className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-wider">Balance</span>
+          </Link>
+          <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className={`flex flex-col items-center gap-1 py-1 px-3 transition-all ${isMobileMenuOpen ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400'}`}>
+            <Menu className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-wider">Menu</span>
+          </button>
         </div>
       )}
     </nav>
