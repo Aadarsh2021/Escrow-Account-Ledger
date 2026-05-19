@@ -623,6 +623,7 @@ const LedgerView = () => {
             balance: newBalActive
           },
           {
+            id: crypto.randomUUID(),
             user_id: authUser.id,
             party_id: editFormData.linkedParty.id,
             linked_transaction_id: anchorId,
@@ -633,6 +634,7 @@ const LedgerView = () => {
             balance: newBalCompany
           },
           {
+            id: crypto.randomUUID(),
             user_id: authUser.id,
             party_id: commissionParty.id,
             linked_transaction_id: anchorId,
@@ -674,6 +676,7 @@ const LedgerView = () => {
             balance: newBalA
           },
           {
+            id: crypto.randomUUID(),
             user_id: authUser.id,
             party_id: editFormData.linkedParty.id,
             linked_transaction_id: anchorId,
@@ -858,6 +861,7 @@ const LedgerView = () => {
             balance: newBalActive
           },
           {
+            id: crypto.randomUUID(),
             user_id: authUser.id,
             party_id: linkedParty.id,
             linked_transaction_id: chainId,
@@ -868,6 +872,7 @@ const LedgerView = () => {
             balance: newBalCompany
           },
           {
+            id: crypto.randomUUID(),
             user_id: authUser.id,
             party_id: commissionParty.id,
             linked_transaction_id: chainId,
@@ -915,6 +920,7 @@ const LedgerView = () => {
             balance: newBalA
           },
           {
+            id: crypto.randomUUID(),
             user_id: authUser.id,
             party_id: linkedParty.id,
             linked_transaction_id: chainId,
