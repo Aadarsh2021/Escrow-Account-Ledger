@@ -112,21 +112,21 @@ const UserProfile = () => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="flex items-center justify-between mb-10">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 mb-10">
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 dark:shadow-none">
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-200 dark:shadow-none shrink-0">
             <UserCircle className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Account Settings</h1>
-            <p className="text-slate-500 dark:text-slate-400">Manage your personal information and security.</p>
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Account Settings</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Manage your personal information and security.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           {!isEditing && (
             <button 
               onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-slate-650 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm"
+              className="flex-grow sm:flex-grow-0 flex items-center justify-center gap-2 px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all shadow-sm text-sm"
             >
               <Lock className="w-4 h-4" />
               Edit Profile
@@ -135,7 +135,7 @@ const UserProfile = () => {
           <button 
             type="button"
             onClick={() => navigate('/dashboard')}
-            className="flex items-center gap-1.5 px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-100 dark:shadow-none rounded-2xl font-bold text-sm transition-all whitespace-nowrap"
+            className="flex-grow sm:flex-grow-0 flex items-center justify-center gap-1.5 px-5 py-3 bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-100 dark:shadow-none rounded-2xl font-bold text-sm transition-all whitespace-nowrap"
           >
             <XCircle className="w-4 h-4" />
             Exit

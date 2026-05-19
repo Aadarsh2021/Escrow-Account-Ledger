@@ -231,7 +231,7 @@ const CreateParty = () => {
                     onChange={handleChange}
                     className={`w-full px-5 py-3.5 border rounded-2xl focus:ring-2 outline-none transition-all font-bold text-xl ${
                       formData.commissionType === 'without' 
-                      ? 'bg-slate-105 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600' 
+                      ? 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600' 
                       : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 focus:ring-blue-600/10 focus:border-blue-600'
                     }`}
                   />
@@ -271,7 +271,7 @@ const CreateParty = () => {
           <button
             type="submit"
             disabled={loading}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-bold text-lg flex items-center gap-3 transition-all shadow-xl shadow-blue-200 dark:shadow-none disabled:opacity-50 group"
+            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-xl shadow-blue-200 dark:shadow-none disabled:opacity-50 group"
           >
             {loading ? (
               <Loader2 className="w-6 h-6 animate-spin" />

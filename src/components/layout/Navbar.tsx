@@ -199,12 +199,7 @@ const Navbar = () => {
               </Link>
             )}
 
-            <button 
-              className="md:hidden p-2 text-slate-600 dark:text-slate-300"
-              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            {/* Hamburger removed as bottom navigation bar is active on mobile viewports */}
           </div>
         </div>
       </div>

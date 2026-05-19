@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Settings, PlusCircle, Database, BarChart3, TrendingUp, Users, Activity, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supabase } from '../lib/supabase';
 import { GlobalLoader } from '../components/ui/GlobalLoader';
 const Dashboard = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [companyName, setCompanyName] = useState<string>(() => {
     return localStorage.getItem('cached_dashboard_company') || '';
   });
@@ -221,7 +223,7 @@ const Dashboard = () => {
           {quickActions.map((action) => (
             <div 
               key={action.name} 
-              onClick={() => window.location.href = action.link}
+              onClick={() => navigate(action.link)}
               className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 dark:hover:border-blue-500/40 hover:shadow-2xl dark:hover:shadow-blue-500/5 transition-all cursor-pointer group relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 p-3 opacity-10 dark:opacity-5 scale-150 rotate-12 group-hover:rotate-0 transition-transform text-slate-400 dark:text-slate-500">
@@ -241,7 +243,7 @@ const Dashboard = () => {
           <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center text-slate-900 dark:text-white">
             <h3 className="text-lg font-bold">Recent Activity</h3>
             <button 
-              onClick={() => window.location.href = '/ledger'}
+              onClick={() => navigate('/ledger')}
               className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline"
             >
               View Ledger

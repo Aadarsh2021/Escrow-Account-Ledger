@@ -58,7 +58,7 @@ const AppContent = () => {
     <div className="flex flex-col min-h-screen w-full bg-slate-50 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
       {!isAdminPage && <Navbar />}
       
-      <main className="flex-grow w-full">
+      <main className={`flex-grow w-full ${user ? 'pb-16 md:pb-0' : ''}`}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route 
