@@ -80,7 +80,10 @@ npm install
 To prepare your database, open your **Supabase Dashboard**, go to **SQL Editor**, and run the schemas located in **[supabase/](file:///c:/Users/thaku/OneDrive/Desktop/Work/Escrow%20Account%20Ledger/supabase/)**:
 1. Run `supabase_schema.sql` to initialize core profile schemas.
 2. Run `supabase_parties_schema.sql` and `supabase_transactions_schema.sql` to construct ledgers and accounting relations.
-3. Execute `supabase_monday_final.sql` and `supabase_lock_settlement.sql` to configure the locking mechanisms and automate triggers.
+3. Execute `supabase_monday_final.sql`, `supabase_lock_settlement.sql`, and `supabase_fk_cascade.sql` to configure the locking, settlement, and cascading transaction relations.
+4. Run `admin_setup.sql` to deploy the Administrative HQ operations, stats tracking, and subscription system.
+5. Run `supabase_user_cascade.sql` to configure ON DELETE CASCADE constraints, automatically purging parties and transactions upon user account deletion.
+
 
 ### Step 6: Start Local Development Server
 Launch Vite's development compilation with active Hot Module Replacement (HMR):

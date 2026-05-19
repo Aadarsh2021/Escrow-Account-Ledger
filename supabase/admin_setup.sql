@@ -59,7 +59,7 @@ USING (true);
 CREATE OR REPLACE FUNCTION public.admin_get_all_users()
 RETURNS json
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 BEGIN
   RETURN (
@@ -80,6 +80,7 @@ BEGIN
         (SELECT MAX(tr.transaction_date) FROM public.transactions tr WHERE tr.user_id = p.id) AS last_invoice_created_at
       FROM public.profiles p
       LEFT JOIN auth.users au ON p.id = au.id
+      WHERE au.email IS DISTINCT FROM 'escrow.bms@gmail.com'
       ORDER BY p.updated_at DESC
     ) t
   );
@@ -90,7 +91,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION public.admin_get_stats()
 RETURNS json
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 DECLARE
   total_users bigint;
@@ -100,8 +101,19 @@ DECLARE
   total_give bigint;
   total_take bigint;
 BEGIN
-  SELECT COUNT(*) INTO total_users FROM public.profiles;
-  SELECT COUNT(DISTINCT user_id) INTO active_users FROM public.transactions WHERE transaction_date >= (now() - interval '30 days');
+  -- Count total users excluding the admin user
+  SELECT COUNT(*) INTO total_users 
+  FROM public.profiles p
+  JOIN auth.users au ON p.id = au.id
+  WHERE au.email IS DISTINCT FROM 'escrow.bms@gmail.com';
+  
+  -- Count active users excluding the admin user
+  SELECT COUNT(DISTINCT t.user_id) INTO active_users 
+  FROM public.transactions t
+  JOIN auth.users au ON t.user_id = au.id
+  WHERE t.transaction_date >= (now() - interval '30 days')
+    AND au.email IS DISTINCT FROM 'escrow.bms@gmail.com';
+
   SELECT COUNT(*) INTO total_parties FROM public.parties;
   SELECT COUNT(*) INTO total_transactions FROM public.transactions;
   
@@ -113,6 +125,7 @@ BEGIN
   );
 END;
 $$ LANGUAGE plpgsql;
+
 
 -- 6. Create admin_cancel_subscription function
 CREATE OR REPLACE FUNCTION public.admin_cancel_subscription(target_user_id uuid)
@@ -158,13 +171,14 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION public.admin_delete_user(target_user_id uuid)
 RETURNS void
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, auth
 AS $$
 BEGIN
-  -- Row level deletes in profiles will delete because of CASCADE or manual deletes
+  -- Delete all transactions, parties, profiles, and the auth.users account
   DELETE FROM public.transactions WHERE user_id = target_user_id;
   DELETE FROM public.parties WHERE user_id = target_user_id;
   DELETE FROM public.profiles WHERE id = target_user_id;
+  DELETE FROM auth.users WHERE id = target_user_id;
   
   INSERT INTO public.admin_actions (action_type, target_id, admin_email)
   VALUES ('User Profile Purged', target_user_id::text, 'escrow.bms@gmail.com');
