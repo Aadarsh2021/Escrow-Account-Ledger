@@ -8,20 +8,41 @@ import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import { GlobalLoader } from './components/ui/GlobalLoader';
 
-// Lazy loading pages for performance optimization
-const Landing = lazy(() => import('./pages/Landing'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const Auth = lazy(() => import('./pages/Auth'));
-const CompanySettings = lazy(() => import('./pages/CompanySettings'));
-const CreateParty = lazy(() => import('./pages/CreateParty'));
-const UserProfile = lazy(() => import('./pages/UserProfile'));
-const PartyLedger = lazy(() => import('./pages/LedgerView'));
-const PartyReport = lazy(() => import('./pages/PartyReport'));
-const BalanceSheet = lazy(() => import('./pages/BalanceSheet'));
-const ProfitLossReport = lazy(() => import('./pages/ProfitLossReport'));
-const TransactionReport = lazy(() => import('./pages/TransactionReport'));
-const AdminLogin = lazy(() => import('./pages/AdminLogin'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+// Helper to handle lazy loading failures when new versions are deployed
+const lazyRetry = <T extends React.ComponentType<any>>(
+  componentImport: () => Promise<{ default: T }>
+) => {
+  return lazy(async () => {
+    try {
+      const component = await componentImport();
+      sessionStorage.removeItem('chunk-failed-retry');
+      return component;
+    } catch (error) {
+      console.error("Failed to fetch dynamically imported module, forcing page reload:", error);
+      const hasRetried = sessionStorage.getItem('chunk-failed-retry');
+      if (!hasRetried) {
+        sessionStorage.setItem('chunk-failed-retry', 'true');
+        window.location.reload();
+      }
+      throw error;
+    }
+  });
+};
+
+// Lazy loading pages with retry protocol for zero-downtime hot redeploys
+const Landing = lazyRetry(() => import('./pages/Landing'));
+const Dashboard = lazyRetry(() => import('./pages/Dashboard'));
+const Auth = lazyRetry(() => import('./pages/Auth'));
+const CompanySettings = lazyRetry(() => import('./pages/CompanySettings'));
+const CreateParty = lazyRetry(() => import('./pages/CreateParty'));
+const UserProfile = lazyRetry(() => import('./pages/UserProfile'));
+const PartyLedger = lazyRetry(() => import('./pages/LedgerView'));
+const PartyReport = lazyRetry(() => import('./pages/PartyReport'));
+const BalanceSheet = lazyRetry(() => import('./pages/BalanceSheet'));
+const ProfitLossReport = lazyRetry(() => import('./pages/ProfitLossReport'));
+const TransactionReport = lazyRetry(() => import('./pages/TransactionReport'));
+const AdminLogin = lazyRetry(() => import('./pages/AdminLogin'));
+const AdminDashboard = lazyRetry(() => import('./pages/AdminDashboard'));
 
 // Global Fallback Loader
 const PageLoader = () => <GlobalLoader fullScreen={false} />;

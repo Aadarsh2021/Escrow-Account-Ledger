@@ -367,6 +367,31 @@ const AdminDashboard = () => {
     return { label: 'Premium Active', style: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' };
   };
 
+  const getSubscriptionTimeRemaining = (expiryStr: string | null) => {
+    if (!expiryStr) return { text: 'No active plan', isLow: true, isExpired: true };
+    const expiry = new Date(expiryStr);
+    const diff = expiry.getTime() - Date.now();
+    if (diff <= 0) return { text: 'Expired', isLow: true, isExpired: true };
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    
+    let text = '';
+    if (days > 0) {
+      text = `${days}d ${hours}h left`;
+    } else {
+      text = `${hours}h left`;
+    }
+    
+    return {
+      days,
+      hours,
+      text,
+      isLow: days < 7,
+      isExpired: false
+    };
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col font-sans relative overflow-hidden">
       {/* Glow Effects */}
@@ -588,6 +613,7 @@ const AdminDashboard = () => {
                     <th className="py-4 px-6">Registered Email</th>
                     <th className="py-4 px-6">Last Activity</th>
                     <th className="py-4 px-6">Status Badge</th>
+                    <th className="py-4 px-6">Time Left</th>
                     <th className="py-4 px-6">Entities Count</th>
                     <th className="py-4 px-6 text-right">Operations</th>
                   </tr>
@@ -596,14 +622,14 @@ const AdminDashboard = () => {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i}>
-                        <td colSpan={6} className="py-5 px-6">
+                        <td colSpan={7} className="py-5 px-6">
                           <div className="h-6 bg-slate-100 rounded animate-pulse w-full" />
                         </td>
                       </tr>
                     ))
                   ) : paginatedUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="text-center py-20 px-6 space-y-3">
+                      <td colSpan={7} className="text-center py-20 px-6 space-y-3">
                         <div className="p-4 bg-slate-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto border border-slate-100">
                           <Search className="w-6 h-6 text-slate-400" />
                         </div>
@@ -643,6 +669,20 @@ const AdminDashboard = () => {
                             <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${sub.style}`}>
                               {sub.label}
                             </span>
+                          </td>
+
+                          {/* Time left column */}
+                          <td className="py-4 px-6 text-xs font-bold whitespace-nowrap">
+                            {(() => {
+                              const remaining = getSubscriptionTimeRemaining(user.subscription_expires_at);
+                              if (remaining.isExpired) {
+                                return <span className="text-rose-500">{remaining.text}</span>;
+                              }
+                              if (remaining.isLow) {
+                                return <span className="text-amber-500 animate-pulse">{remaining.text}</span>;
+                              }
+                              return <span className="text-emerald-600">{remaining.text}</span>;
+                            })()}
                           </td>
 
                           {/* Database entities count */}
@@ -1011,6 +1051,19 @@ const AdminDashboard = () => {
                     {selectedUser.subscription_expires_at 
                       ? `Access period valid through ${formatDateTime(selectedUser.subscription_expires_at)}` 
                       : 'No explicit limits. Manage settings from operational limit overlay.'}
+                  </p>
+                  <p className="text-xs font-black uppercase tracking-wider text-slate-500 mt-2">
+                    Time Remaining: {' '}
+                    {(() => {
+                      const remaining = getSubscriptionTimeRemaining(selectedUser.subscription_expires_at);
+                      if (remaining.isExpired) {
+                        return <span className="text-rose-500 font-extrabold">{remaining.text}</span>;
+                      }
+                      if (remaining.isLow) {
+                        return <span className="text-amber-500 font-extrabold animate-pulse">{remaining.text}</span>;
+                      }
+                      return <span className="text-emerald-600 font-extrabold">{remaining.text}</span>;
+                    })()}
                   </p>
                 </div>
               </div>
