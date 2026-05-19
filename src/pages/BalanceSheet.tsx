@@ -68,37 +68,32 @@ const BalanceSheet = () => {
   const fetchData = async () => {
     if (!user) return;
     try {
-      // Fetch both parties and transactions in parallel to optimize initial load time!
-      const [partiesResult, tnsResult] = await Promise.all([
-        supabase
-          .from('parties')
-          .select('id, party_name, sr_no, status, system_type')
-          .eq('user_id', user.id),
-        supabase
-          .from('transactions')
-          .select('party_id, balance, transaction_date')
-          .eq('user_id', user.id)
-          .order('transaction_date', { ascending: false })
-          .order('created_at', { ascending: false })
-      ]);
-
-      const { data: partiesData, error: partiesError } = partiesResult;
-      const { data: tnsData, error: tnsError } = tnsResult;
+      // Fetch parties and their latest transaction in a single query using nested limits
+      const { data: partiesData, error: partiesError } = await supabase
+        .from('parties')
+        .select(`
+          id,
+          party_name,
+          sr_no,
+          status,
+          system_type,
+          transactions (
+            balance,
+            transaction_date,
+            created_at
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('transaction_date', { foreignTable: 'transactions', ascending: false })
+        .order('created_at', { foreignTable: 'transactions', ascending: false })
+        .limit(1, { foreignTable: 'transactions' });
 
       if (partiesError) throw partiesError;
-      if (tnsError) throw tnsError;
-
-      // Map to track latest balance of each party
-      const latestBalances = new Map<string, number>();
-      tnsData?.forEach(t => {
-        if (!latestBalances.has(t.party_id)) {
-          latestBalances.set(t.party_id, t.balance);
-        }
-      });
 
       // Combine parties with their latest balance
       const mappedParties: PartyBalance[] = (partiesData || []).map(p => {
-        const bal = latestBalances.has(p.id) ? latestBalances.get(p.id)! : 0;
+        const tns = p.transactions as any[];
+        const bal = tns && tns.length > 0 ? tns[0].balance : 0;
         return {
           id: p.id,
           party_name: p.party_name,

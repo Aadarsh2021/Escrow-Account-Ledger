@@ -14,7 +14,12 @@ import {
   FileText,
   Building2,
   Sun,
-  Moon
+  Moon,
+  Download,
+  Cloud,
+  RefreshCw,
+  Trash2,
+  FileX
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -48,14 +53,20 @@ const Navbar = () => {
       name: 'Configure', 
       icon: <Settings className="w-4 h-4" />,
       subItems: [
-        { name: 'Company Settings', icon: <Building2 className="w-4 h-4" />, path: '/configure/company' }
+        { name: 'Company Settings', icon: <Building2 className="w-4 h-4" />, path: '/configure/company' },
+        { name: 'Backup', icon: <Download className="w-4 h-4" />, path: '/configure/backup' },
+        { name: 'Online Backup', icon: <Cloud className="w-4 h-4" />, path: '/configure/online-backup' },
+        { name: 'Clear Data & Keep Balance', icon: <RefreshCw className="w-4 h-4" />, path: '/configure/clear-data-keep-balance' },
+        { name: 'Clear All Balance', icon: <Trash2 className="w-4 h-4" />, path: '/configure/clear-all-balance' },
+        { name: 'Clear Backup', icon: <FileX className="w-4 h-4" />, path: '/configure/clear-backup' }
       ]
     },
     { 
       name: 'Create', 
       icon: <PlusCircle className="w-4 h-4" />,
       subItems: [
-        { name: 'Create New Party', icon: <PlusCircle className="w-4 h-4" />, path: '/create/party' }
+        { name: 'Create New Party', icon: <PlusCircle className="w-4 h-4" />, path: '/create/party' },
+        { name: 'Party Report', icon: <FileText className="w-4 h-4" />, path: '/reports/parties' }
       ]
     },
     { 
@@ -69,8 +80,9 @@ const Navbar = () => {
       name: 'Reports', 
       icon: <BarChart3 className="w-4 h-4" />,
       subItems: [
-        { name: 'Party Report', icon: <FileText className="w-4 h-4" />, path: '/reports/parties' },
-        { name: 'Balance Sheet', icon: <FileText className="w-4 h-4" />, path: '/reports/balance' }
+        { name: 'Final Balance', icon: <FileText className="w-4 h-4" />, path: '/reports/balance' },
+        { name: 'Profit/Loss Report', icon: <BarChart3 className="w-4 h-4" />, path: '/reports/profit-loss' },
+        { name: 'Transaction Report', icon: <FileText className="w-4 h-4" />, path: '/reports/transactions' }
       ]
     },
   ];

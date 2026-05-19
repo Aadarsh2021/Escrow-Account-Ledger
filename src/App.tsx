@@ -18,6 +18,8 @@ const UserProfile = lazy(() => import('./pages/UserProfile'));
 const PartyLedger = lazy(() => import('./pages/LedgerView'));
 const PartyReport = lazy(() => import('./pages/PartyReport'));
 const BalanceSheet = lazy(() => import('./pages/BalanceSheet'));
+const ProfitLossReport = lazy(() => import('./pages/ProfitLossReport'));
+const TransactionReport = lazy(() => import('./pages/TransactionReport'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
 
@@ -124,6 +126,22 @@ const AppContent = () => {
               element={
                 <ProtectedRoute>
                   <BalanceSheet />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/reports/profit-loss" 
+              element={
+                <ProtectedRoute>
+                  <ProfitLossReport />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/reports/transactions" 
+              element={
+                <ProtectedRoute>
+                  <TransactionReport />
                 </ProtectedRoute>
               } 
             />

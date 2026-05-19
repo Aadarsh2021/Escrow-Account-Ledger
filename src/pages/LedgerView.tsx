@@ -92,7 +92,16 @@ const LedgerView = () => {
     type: 'danger' | 'warning' | 'success';
     onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', type: 'warning', onConfirm: () => {} });
-  const [editFormData, setEditFormData] = useState({ remarks: '', date: '' });
+  const [editFormData, setEditFormData] = useState<{
+    remarks: string;
+    amount: string;
+    linkedParty: Party | null;
+    linkedSearch: string;
+  }>({ remarks: '', amount: '', linkedParty: null, linkedSearch: '' });
+  const [isEditLinkedSearchOpen, setIsEditLinkedSearchOpen] = useState(false);
+  const [editHighlightedIndex, setEditHighlightedIndex] = useState(0);
+  const editLinkedSearchRef = useRef<HTMLInputElement>(null);
+  const editDropdownRef = useRef<HTMLDivElement>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [amount, setAmount] = useState('');
@@ -128,6 +137,7 @@ const LedgerView = () => {
 
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsLinkedSearchOpen(false);
+      if (editDropdownRef.current && !editDropdownRef.current.contains(event.target as Node)) setIsEditLinkedSearchOpen(false);
       if (headerDropdownRef.current && !headerDropdownRef.current.contains(event.target as Node)) setIsHeaderSearchOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -206,6 +216,47 @@ const LedgerView = () => {
         setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
       }
     } catch (err) { console.error(err); }
+  };
+
+  const recalculateBalances = async (partyId: string) => {
+    try {
+      const { data: activeTns, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('party_id', partyId)
+        .neq('is_finalized', true)
+        .order('transaction_date', { ascending: true })
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      if (!activeTns || activeTns.length === 0) return;
+
+      let runningBalance = 0;
+      const updates = [];
+
+      for (let i = 0; i < activeTns.length; i++) {
+        const t = activeTns[i];
+        if (t.is_settlement) {
+          runningBalance = t.balance;
+        } else {
+          runningBalance = runningBalance + t.credit - t.debit;
+          if (t.balance !== runningBalance) {
+            updates.push({ id: t.id, balance: runningBalance });
+          }
+        }
+      }
+
+      if (updates.length > 0) {
+        for (const update of updates) {
+          await supabase
+            .from('transactions')
+            .update({ balance: update.balance })
+            .eq('id', update.id);
+        }
+      }
+    } catch (err) {
+      console.error('Error recalculating balances:', err);
+    }
   };
 
   const handleMondayFinal = async () => {
@@ -312,13 +363,6 @@ const LedgerView = () => {
     return data?.[0]?.balance || 0;
   };
 
-  const insertTns = async (partyId: string, remarks: string, type: 'CR' | 'DR', amt: number, linkedId?: string) => {
-    const currentBal = await getBalance(partyId);
-    const credit = type === 'CR' ? amt : 0;
-    const debit = type === 'DR' ? amt : 0;
-    const newBal = currentBal + credit - debit;
-    return await supabase.from('transactions').insert([{ party_id: partyId, linked_transaction_id: linkedId, remarks, tns_type: type, credit, debit, balance: newBal }]).select().single();
-  };
 
   const handlePartySelect = (party: Party) => {
     setSelectedParty(party);
@@ -391,6 +435,14 @@ const LedgerView = () => {
           const allAnchorIds = new Set<string>();
           selectedEntries?.forEach(e => { allAnchorIds.add(e.linked_transaction_id || e.id); });
           
+          // Get all affected party IDs before deletion
+          const { data: tnsToDelete } = await supabase
+            .from('transactions')
+            .select('party_id')
+            .or(`id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')}),linked_transaction_id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')})`);
+          
+          const affectedPartyIds = new Set<string>([selectedParty.id, ...(tnsToDelete?.map(t => t.party_id) || [])]);
+
           // Delete both the anchor transactions and any transactions linked to them to prevent foreign key violations
           const { error } = await supabase
             .from('transactions')
@@ -398,6 +450,12 @@ const LedgerView = () => {
             .or(`id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')}),linked_transaction_id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')})`);
             
           if (error) throw error;
+
+          // Recalculate balances for all affected parties
+          for (const pId of affectedPartyIds) {
+            await recalculateBalances(pId);
+          }
+
           setSelectedTnsIds(new Set());
           fetchParties(); // Instantly refresh party status (Yes -> No)
           if (selectedParty) fetchTransactions(selectedParty.id);
@@ -411,32 +469,239 @@ const LedgerView = () => {
     });
   };
 
-  const handleModifyTns = () => {
-    if (selectedTnsIds.size !== 1 || isOldRecordsView) return;
+  const handleModifyTns = async () => {
+    if (selectedTnsIds.size !== 1 || isOldRecordsView || !selectedParty) return;
     const tnsId = Array.from(selectedTnsIds)[0];
-    const tns = transactions.find(t => t.id === tnsId);
-    if (!tns) return;
+    const tnsA = transactions.find(t => t.id === tnsId);
+    if (!tnsA) return;
 
-    if (tns.is_settlement) {
+    if (tnsA.is_settlement) {
       alert('Monday Final settlement records cannot be modified once created.');
       return;
     }
 
-    setEditFormData({ remarks: tns.remarks, date: tns.transaction_date });
-    setIsEditModalOpen(true);
+    setSubmitting(true);
+    try {
+      const anchorId = tnsA.linked_transaction_id || tnsA.id;
+      // Fetch all transactions in the group to identify partner
+      const { data: pair, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('linked_transaction_id', anchorId);
+
+      if (error) throw error;
+
+      const pairPartyIds = pair?.map(t => t.party_id) || [];
+      const { data: pairParties } = await supabase
+        .from('parties')
+        .select('*')
+        .in('id', pairPartyIds);
+
+      const companyPartyObj = pairParties?.find(p => p.system_type === 'company');
+      const commissionPartyObj = pairParties?.find(p => p.system_type === 'commission');
+      const partnerPartyObj = pairParties?.find(p => p.id !== selectedParty.id && p.system_type !== 'commission');
+
+      let initialLinkedParty: Party | null = null;
+      let initialAmountVal = 0;
+
+      if (companyPartyObj && commissionPartyObj) {
+        // It's a 3-way split!
+        initialLinkedParty = companyPartyObj as Party;
+        const compTns = pair?.find(t => t.party_id === companyPartyObj.id);
+        // The full amount is the debit of the company party
+        initialAmountVal = compTns ? (compTns.debit > 0 ? compTns.debit : -compTns.credit) : 0;
+      } else {
+        // It's a normal 2-way transaction
+        if (partnerPartyObj) {
+          initialLinkedParty = partnerPartyObj as Party;
+        }
+        initialAmountVal = tnsA.credit > 0 ? tnsA.credit : -tnsA.debit;
+      }
+
+      setEditFormData({
+        remarks: tnsA.remarks || '',
+        amount: initialAmountVal.toString(),
+        linkedParty: initialLinkedParty,
+        linkedSearch: initialLinkedParty ? initialLinkedParty.party_name : ''
+      });
+      setIsEditModalOpen(true);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to load transaction details.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const saveModification = async () => {
-    if (selectedTnsIds.size !== 1 || !selectedParty) return;
+    if (selectedTnsIds.size !== 1 || !selectedParty || !editFormData.linkedParty || !authUser) return;
     const tnsId = Array.from(selectedTnsIds)[0];
+    const tnsA = transactions.find(t => t.id === tnsId);
+    if (!tnsA) return;
+
+    const numAmt = parseFloat(editFormData.amount);
+    if (isNaN(numAmt) || numAmt === 0) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const { data: currentTns } = await supabase.from('transactions').select('linked_transaction_id').eq('id', tnsId).single();
-      const anchorId = currentTns?.linked_transaction_id || tnsId;
-      const { error } = await supabase.from('transactions').update({ remarks: editFormData.remarks, transaction_date: editFormData.date }).or(`id.eq.${anchorId},linked_transaction_id.eq.${anchorId}`);
-      if (error) throw error;
+      const anchorId = tnsA.linked_transaction_id || tnsA.id;
+
+      // Get all affected party IDs before modification
+      const { data: tnsToModify } = await supabase
+        .from('transactions')
+        .select('party_id')
+        .eq('linked_transaction_id', anchorId);
+      
+      const affectedPartyIds = new Set<string>([
+        selectedParty.id,
+        editFormData.linkedParty.id,
+        ...(tnsToModify?.map(t => t.party_id) || [])
+      ]);
+
+      const absAmt = Math.abs(numAmt);
+      const primaryType = numAmt > 0 ? 'CR' : 'DR';
+      const secondaryType = numAmt > 0 ? 'DR' : 'CR';
+
+      const isNewThreeWay = selectedParty.status === 'give' && editFormData.linkedParty.system_type === 'company';
+
+      // First delete all existing transactions under this linked_transaction_id
+      const { error: delError } = await supabase
+        .from('transactions')
+        .delete()
+        .eq('linked_transaction_id', anchorId);
+      
+      if (delError) throw delError;
+
+      if (isNewThreeWay) {
+        // Calculate commission (1%)
+        const commissionAmt = parseFloat((absAmt * 0.01).toFixed(2));
+        const netAmt = parseFloat((absAmt - commissionAmt).toFixed(2));
+
+        // Find or fetch the commission party
+        const { data: commParties } = await supabase
+          .from('parties')
+          .select('*')
+          .eq('system_type', 'commission')
+          .limit(1);
+
+        const commissionParty = commParties?.[0];
+        if (!commissionParty) throw new Error("Commission account not found in database.");
+
+        affectedPartyIds.add(commissionParty.id);
+
+        const [balActive, balCompany, balComm] = await Promise.all([
+          getBalance(selectedParty.id),
+          getBalance(editFormData.linkedParty.id),
+          getBalance(commissionParty.id)
+        ]);
+
+        const firstPartyCredit = primaryType === 'CR' ? netAmt : 0;
+        const firstPartyDebit = primaryType === 'DR' ? netAmt : 0;
+        const newBalActive = balActive + firstPartyCredit - firstPartyDebit;
+
+        const companyCredit = secondaryType === 'CR' ? absAmt : 0;
+        const companyDebit = secondaryType === 'DR' ? absAmt : 0;
+        const newBalCompany = balCompany + companyCredit - companyDebit;
+
+        const commCredit = primaryType === 'CR' ? commissionAmt : 0;
+        const commDebit = primaryType === 'DR' ? commissionAmt : 0;
+        const newBalComm = balComm + commCredit - commDebit;
+
+        const { error: insertErr } = await supabase.from('transactions').insert([
+          {
+            id: anchorId,
+            user_id: authUser.id,
+            party_id: selectedParty.id,
+            linked_transaction_id: anchorId,
+            remarks: editFormData.remarks || '',
+            tns_type: primaryType,
+            credit: firstPartyCredit,
+            debit: firstPartyDebit,
+            balance: newBalActive
+          },
+          {
+            user_id: authUser.id,
+            party_id: editFormData.linkedParty.id,
+            linked_transaction_id: anchorId,
+            remarks: editFormData.remarks || '',
+            tns_type: secondaryType,
+            credit: companyCredit,
+            debit: companyDebit,
+            balance: newBalCompany
+          },
+          {
+            user_id: authUser.id,
+            party_id: commissionParty.id,
+            linked_transaction_id: anchorId,
+            remarks: `1% Commission from ${selectedParty.party_name}`,
+            tns_type: primaryType,
+            credit: commCredit,
+            debit: commDebit,
+            balance: newBalComm
+          }
+        ]);
+
+        if (insertErr) throw insertErr;
+
+      } else {
+        // Normal 2-way transaction
+        const [balA, balB] = await Promise.all([
+          getBalance(selectedParty.id),
+          getBalance(editFormData.linkedParty.id)
+        ]);
+
+        const creditA = primaryType === 'CR' ? absAmt : 0;
+        const debitA = primaryType === 'DR' ? absAmt : 0;
+        const newBalA = balA + creditA - debitA;
+
+        const creditB = secondaryType === 'CR' ? absAmt : 0;
+        const debitB = secondaryType === 'DR' ? absAmt : 0;
+        const newBalB = balB + creditB - debitB;
+
+        const { error: insertErr } = await supabase.from('transactions').insert([
+          {
+            id: anchorId,
+            user_id: authUser.id,
+            party_id: selectedParty.id,
+            linked_transaction_id: anchorId,
+            remarks: editFormData.remarks || '',
+            tns_type: primaryType,
+            credit: creditA,
+            debit: debitA,
+            balance: newBalA
+          },
+          {
+            user_id: authUser.id,
+            party_id: editFormData.linkedParty.id,
+            linked_transaction_id: anchorId,
+            remarks: editFormData.remarks || '',
+            tns_type: secondaryType,
+            credit: creditB,
+            debit: debitB,
+            balance: newBalB
+          }
+        ]);
+
+        if (insertErr) throw insertErr;
+      }
+
+      // Recalculate balances for all affected parties
+      for (const pId of affectedPartyIds) {
+        await recalculateBalances(pId);
+      }
+
       setIsEditModalOpen(false);
+      setSelectedTnsIds(new Set());
       await fetchTransactions(selectedParty.id);
-    } catch (err) { console.error(err); alert("Error updating transactions."); }
+    } catch (err) {
+      console.error(err);
+      alert("Error updating transaction: " + (err as any).message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filteredParties = parties.filter(p => p.party_name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sr_no.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -465,7 +730,17 @@ const LedgerView = () => {
     setIsLinkedSearchOpen(false);
     if (party.system_type === 'commission' && selectedParty) {
       const isTake = selectedParty.status === 'take';
-      const mainTns = transactions.filter(t => t.remarks !== 'COMMISSION');
+      
+      // Find the last commission transaction index in the active list
+      const lastCommIdx = [...transactions].reverse().findIndex(t => t.remarks?.toUpperCase() === 'COMMISSION');
+      
+      // Only calculate commission on transactions after the last commission transaction
+      const uncommissionedTns = lastCommIdx === -1 
+        ? transactions 
+        : transactions.slice(transactions.length - lastCommIdx);
+      
+      // Filter out settlement and commission records
+      const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
       const totalVolume = mainTns.reduce((sum, t) => sum + (isTake ? t.credit : t.debit), 0);
       const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
       
@@ -475,6 +750,45 @@ const LedgerView = () => {
       setRemarks('COMMISSION');
     }
     amountInputRef.current?.focus();
+  };
+
+  const getEditAmountColorClass = () => {
+    if (!editFormData.amount) return 'text-blue-600';
+    const val = parseFloat(editFormData.amount);
+    if (isNaN(val) || val === 0) return 'text-blue-600';
+    return val > 0 ? 'text-emerald-600' : 'text-rose-600';
+  };
+
+  const filteredEditLinkedParties = parties.filter(p => p.id !== selectedParty?.id && (p.party_name.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(editFormData.linkedSearch.toLowerCase())));
+
+  const firstEditLinkedMatch = editFormData.linkedSearch
+    ? filteredEditLinkedParties.find(p => p.party_name.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()))
+    : null;
+
+  const selectEditLinkedParty = (party: Party) => {
+    setEditFormData(prev => ({
+      ...prev,
+      linkedParty: party,
+      linkedSearch: party.party_name
+    }));
+    setIsEditLinkedSearchOpen(false);
+    if (party.system_type === 'commission' && selectedParty) {
+      const isTake = selectedParty.status === 'take';
+      const lastCommIdx = [...transactions].reverse().findIndex(t => t.remarks?.toUpperCase() === 'COMMISSION');
+      const uncommissionedTns = lastCommIdx === -1 
+        ? transactions 
+        : transactions.slice(transactions.length - lastCommIdx);
+      const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
+      const totalVolume = mainTns.reduce((sum, t) => sum + (isTake ? t.credit : t.debit), 0);
+      const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
+      
+      const amountSign = isTake ? '-' : '';
+      setEditFormData(prev => ({
+        ...prev,
+        amount: `${amountSign}${calculatedComm.toFixed(2)}`,
+        remarks: 'COMMISSION'
+      }));
+    }
   };
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
@@ -487,20 +801,137 @@ const LedgerView = () => {
       const firstPartyType = numAmt > 0 ? 'CR' : 'DR';
       const secondPartyType = numAmt > 0 ? 'DR' : 'CR';
 
-      // 1. Insert first transaction
-      const { data: firstTns, error: firstErr } = await insertTns(selectedParty.id, remarks || '', firstPartyType, absAmt);
-      if (firstErr) throw firstErr;
-      if (!firstTns) throw new Error('Failed to create primary transaction record.');
+      const chainId = typeof crypto.randomUUID === 'function' 
+        ? crypto.randomUUID() 
+        : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+            const r = Math.random() * 16 | 0;
+            const v = c === 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+          });
 
-      const chainId = firstTns.id;
-      
-      // 2. Update first transaction to link it to the chain so partner name shows up on this side too
-      const { error: updateErr } = await supabase.from('transactions').update({ linked_transaction_id: chainId }).eq('id', chainId);
-      if (updateErr) throw updateErr;
-      
-      // 3. Insert the partner/linked transaction
-      const { error: secondErr } = await insertTns(linkedParty.id, remarks || '', secondPartyType, absAmt, chainId);
-      if (secondErr) throw secondErr;
+      const isThreeWay = selectedParty.status === 'give' && linkedParty.system_type === 'company';
+
+      if (isThreeWay) {
+        // Calculate commission (1%)
+        const commissionAmt = parseFloat((absAmt * 0.01).toFixed(2));
+        const netAmt = parseFloat((absAmt - commissionAmt).toFixed(2));
+
+        // Find the commission party
+        const { data: commParties } = await supabase
+          .from('parties')
+          .select('*')
+          .eq('system_type', 'commission')
+          .limit(1);
+
+        const commissionParty = commParties?.[0];
+        if (!commissionParty) throw new Error("Commission account not found in database.");
+
+        // Get current balances
+        const [balActive, balCompany, balComm] = await Promise.all([
+          getBalance(selectedParty.id),
+          getBalance(linkedParty.id),
+          getBalance(commissionParty.id)
+        ]);
+
+        const firstPartyCredit = firstPartyType === 'CR' ? netAmt : 0;
+        const firstPartyDebit = firstPartyType === 'DR' ? netAmt : 0;
+        const newBalActive = balActive + firstPartyCredit - firstPartyDebit;
+
+        const companyCredit = secondPartyType === 'CR' ? absAmt : 0;
+        const companyDebit = secondPartyType === 'DR' ? absAmt : 0;
+        const newBalCompany = balCompany + companyCredit - companyDebit;
+
+        const commCredit = firstPartyType === 'CR' ? commissionAmt : 0;
+        const commDebit = firstPartyType === 'DR' ? commissionAmt : 0;
+        const newBalComm = balComm + commCredit - commDebit;
+
+        const { error: insertErr } = await supabase.from('transactions').insert([
+          {
+            id: chainId,
+            user_id: authUser.id,
+            party_id: selectedParty.id,
+            linked_transaction_id: chainId,
+            remarks: remarks || '',
+            tns_type: firstPartyType,
+            credit: firstPartyCredit,
+            debit: firstPartyDebit,
+            balance: newBalActive
+          },
+          {
+            user_id: authUser.id,
+            party_id: linkedParty.id,
+            linked_transaction_id: chainId,
+            remarks: remarks || '',
+            tns_type: secondPartyType,
+            credit: companyCredit,
+            debit: companyDebit,
+            balance: newBalCompany
+          },
+          {
+            user_id: authUser.id,
+            party_id: commissionParty.id,
+            linked_transaction_id: chainId,
+            remarks: `1% Commission from ${selectedParty.party_name}`,
+            tns_type: firstPartyType,
+            credit: commCredit,
+            debit: commDebit,
+            balance: newBalComm
+          }
+        ]);
+
+        if (insertErr) throw insertErr;
+
+        // Recalculate balances to ensure everything is perfect
+        await recalculateBalances(selectedParty.id);
+        await recalculateBalances(linkedParty.id);
+        await recalculateBalances(commissionParty.id);
+
+      } else {
+        // Get current balances
+        const [balA, balB] = await Promise.all([
+          getBalance(selectedParty.id),
+          getBalance(linkedParty.id)
+        ]);
+
+        const creditA = firstPartyType === 'CR' ? absAmt : 0;
+        const debitA = firstPartyType === 'DR' ? absAmt : 0;
+        const newBalA = balA + creditA - debitA;
+
+        const creditB = secondPartyType === 'CR' ? absAmt : 0;
+        const debitB = secondPartyType === 'DR' ? absAmt : 0;
+        const newBalB = balB + creditB - debitB;
+
+        // Insert both transaction records atomically
+        const { error: insertErr } = await supabase.from('transactions').insert([
+          {
+            id: chainId,
+            user_id: authUser.id,
+            party_id: selectedParty.id,
+            linked_transaction_id: chainId,
+            remarks: remarks || '',
+            tns_type: firstPartyType,
+            credit: creditA,
+            debit: debitA,
+            balance: newBalA
+          },
+          {
+            user_id: authUser.id,
+            party_id: linkedParty.id,
+            linked_transaction_id: chainId,
+            remarks: remarks || '',
+            tns_type: secondPartyType,
+            credit: creditB,
+            debit: debitB,
+            balance: newBalB
+          }
+        ]);
+
+        if (insertErr) throw insertErr;
+
+        // Recalculate balances to ensure everything is perfect
+        await recalculateBalances(selectedParty.id);
+        await recalculateBalances(linkedParty.id);
+      }
 
       setAmount(''); setRemarks(''); setLinkedParty(null); setLinkedSearch(''); linkedSearchRef.current?.focus();
     } catch (err) { 
@@ -667,58 +1098,63 @@ const LedgerView = () => {
           <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex justify-between items-center shrink-0 shadow-sm z-20 transition-colors duration-200">
             <div className="flex items-center gap-4">
               <button onClick={() => setSelectedParty(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all"><ArrowLeft className="w-6 h-6" /></button>
-              <div className="relative" ref={headerDropdownRef}>
-                <div className="flex items-center gap-2 cursor-pointer group hover:bg-slate-50 dark:hover:bg-slate-800 px-3 py-1 -ml-3 rounded-xl transition-all" onClick={() => { setIsHeaderSearchOpen(!isHeaderSearchOpen); if(!isHeaderSearchOpen) setTimeout(() => headerSearchRef.current?.focus(), 50); }}>
-                  <h2 className="text-2xl font-black text-slate-900 dark:text-white leading-tight">{selectedParty.party_name}</h2>
-                  <ChevronDown className={`w-5 h-5 text-slate-300 dark:text-slate-600 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-all ${isHeaderSearchOpen ? 'rotate-180' : ''}`} />
-                </div>
-                {isHeaderSearchOpen && (
-                  <div className="absolute top-full left-0 mt-2 w-72 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-[1.5rem] shadow-2xl dark:shadow-none z-[100] overflow-hidden">
-                    <div className="p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950">
-                      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:border-blue-600 transition-all">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
-                        {firstHeaderMatch && (
-                          <div className="absolute inset-0 pl-9 pr-4 py-2 pointer-events-none flex items-center font-bold text-sm text-slate-400 dark:text-slate-400 select-none z-0">
-                            <span className="text-transparent">{headerSearch}</span>
-                            <span className="inline-flex items-center gap-1 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[10px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
-                              {firstHeaderMatch.party_name.slice(headerSearch.length)}
-                              <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-0.5 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
-                            </span>
-                          </div>
-                        )}
-                        <input 
-                          ref={headerSearchRef} 
-                          placeholder="Quick Switch..." 
-                          className="w-full pl-9 pr-4 py-2 bg-transparent outline-none text-sm font-bold text-slate-800 dark:text-white relative z-10" 
-                          value={headerSearch} 
-                          onChange={(e) => { setHeaderSearch(e.target.value); setHighlightedIndex(0); }} 
-                          onKeyDown={(e) => { 
-                            if ((e.key === 'Enter' || e.key === 'Tab') && firstHeaderMatch) {
-                              e.preventDefault();
-                              handlePartySelect(firstHeaderMatch);
-                            } else if (e.key === 'ArrowDown') {
-                              setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
-                            } else if (e.key === 'ArrowUp') {
-                              setHighlightedIndex(p => Math.max(p-1, 0)); 
-                            } else if (e.key === 'Enter' && filteredHeaderParties.length > 0) {
-                              handlePartySelect(filteredHeaderParties[highlightedIndex]);
-                            }
-                          }} 
-                        />
-                      </div>
+              <div className="flex items-center gap-4" ref={headerDropdownRef}>
+                <div className="relative w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
+                  {firstHeaderMatch && (
+                    <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
+                      <span className="text-transparent">{headerSearch}</span>
+                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
+                        {firstHeaderMatch.party_name.slice(headerSearch.length)}
+                        <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
+                      </span>
                     </div>
-                    <div className="max-h-72 overflow-y-auto">
-                      {filteredHeaderParties.map((p, i) => (<div key={p.id} onClick={() => handlePartySelect(p)} className={`px-5 py-3 flex justify-between items-center cursor-pointer ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}><span className="font-bold text-sm">{p.party_name}</span><span className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase">{p.sr_no}</span></div>))}
-                    </div>
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">SR NO: {selectedParty.sr_no}</span>
-                  {selectedParty.system_type === 'normal' && (
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${selectedParty.status === 'take' ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-450'}`}>
-                      {selectedParty.status} ({selectedParty.commission_rate}%)
-                    </span>
                   )}
+                  <input 
+                    ref={headerSearchRef} 
+                    placeholder={selectedParty.party_name} 
+                    className="w-full pl-10 pr-8 py-2.5 bg-transparent outline-none font-bold text-sm text-slate-800 dark:text-white relative z-10" 
+                    value={headerSearch} 
+                    onChange={(e) => { setHeaderSearch(e.target.value); setIsHeaderSearchOpen(true); setHighlightedIndex(0); }} 
+                    onClick={() => setIsHeaderSearchOpen(true)} 
+                    onKeyDown={(e) => { 
+                      if ((e.key === 'Enter' || e.key === 'Tab') && firstHeaderMatch) {
+                        e.preventDefault();
+                        handlePartySelect(firstHeaderMatch);
+                      } else if (e.key === 'ArrowDown') {
+                        setIsHeaderSearchOpen(true);
+                        setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
+                      } else if (e.key === 'ArrowUp') {
+                        setHighlightedIndex(p => Math.max(p-1, 0)); 
+                      } else if (e.key === 'Enter' && filteredHeaderParties.length > 0) {
+                        e.preventDefault();
+                        handlePartySelect(filteredHeaderParties[highlightedIndex]);
+                      }
+                    }} 
+                  />
+                  <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 transition-all pointer-events-none ${isHeaderSearchOpen ? 'rotate-180' : ''}`} />
+                  {isHeaderSearchOpen && filteredHeaderParties.length > 0 && (
+                    <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-50">
+                      {filteredHeaderParties.map((p, i) => (
+                        <div 
+                          key={p.id} 
+                          onClick={() => handlePartySelect(p)} 
+                          className={`px-4 py-2.5 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                        >
+                          <span className="font-bold text-sm">{p.party_name}</span>
+                          <span className="text-[10px] font-black opacity-45 dark:opacity-60 uppercase">{p.sr_no}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col justify-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">SR NO: {selectedParty.sr_no}</span>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase ${selectedParty.status === 'take' ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-450'}`}>
+                      {selectedParty.status} {selectedParty.system_type === 'normal' && `(${selectedParty.commission_rate}%)`}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -858,17 +1294,89 @@ const LedgerView = () => {
               <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all"><X className="w-6 h-6" /></button>
             </div>
             <div className="p-8 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest ml-1">Remarks</label>
-                <input className="w-full px-5 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-lg" value={editFormData.remarks} onChange={(e) => setEditFormData({ ...editFormData, remarks: e.target.value })} />
+              <div className="space-y-1.5 relative" ref={editDropdownRef}>
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
+                <div className="relative bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+                  <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-455 z-10" />
+                  {firstEditLinkedMatch && (
+                    <div className="absolute inset-0 pl-11 pr-8 py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
+                      <span className="text-transparent">{editFormData.linkedSearch}</span>
+                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
+                        {firstEditLinkedMatch.party_name.slice(editFormData.linkedSearch.length)}
+                        <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[9px] text-blue-500 font-black shadow-xs">TAB</kbd>
+                      </span>
+                    </div>
+                  )}
+                  <input 
+                    ref={editLinkedSearchRef} 
+                    placeholder="Search Party..." 
+                    className="w-full pl-11 pr-8 py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10" 
+                    value={editFormData.linkedSearch} 
+                    onChange={(e) => { 
+                      setEditFormData({ ...editFormData, linkedSearch: e.target.value }); 
+                      setIsEditLinkedSearchOpen(true); 
+                      setEditHighlightedIndex(0); 
+                    }} 
+                    onClick={() => setIsEditLinkedSearchOpen(true)} 
+                    onKeyDown={(e) => { 
+                      if ((e.key === 'Enter' || e.key === 'Tab') && firstEditLinkedMatch) {
+                        e.preventDefault();
+                        selectEditLinkedParty(firstEditLinkedMatch);
+                      } else if(e.key === 'ArrowDown') { 
+                        setIsEditLinkedSearchOpen(true); 
+                        setEditHighlightedIndex(p => Math.min(p+1, filteredEditLinkedParties.length-1)); 
+                      } else if(e.key === 'ArrowUp') {
+                        setEditHighlightedIndex(p => Math.max(p-1, 0)); 
+                      } else if(e.key === 'Enter' && filteredEditLinkedParties.length > 0) { 
+                        e.preventDefault(); 
+                        selectEditLinkedParty(filteredEditLinkedParties[editHighlightedIndex]); 
+                      } 
+                    }} 
+                  />
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-650 z-10 pointer-events-none" />
+                  {isEditLinkedSearchOpen && filteredEditLinkedParties.length > 0 && (
+                    <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-40 overflow-y-auto z-50">
+                      {filteredEditLinkedParties.map((p, i) => (
+                        <div 
+                          key={p.id} 
+                          onClick={() => selectEditLinkedParty(p)} 
+                          className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === editHighlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                        >
+                          <span className="font-bold">{p.party_name}</span>
+                          <span className="text-[10px] font-black opacity-40 dark:opacity-60 uppercase">{p.sr_no}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-400 uppercase tracking-widest ml-1">Date</label>
-                <input type="date" className="w-full px-5 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-lg" value={editFormData.date.split('T')[0]} onChange={(e) => setEditFormData({ ...editFormData, date: e.target.value })} />
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
+                <input 
+                  required 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="3000 (CR) or -3000 (DR)" 
+                  className={`w-full px-5 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getEditAmountColorClass()}`} 
+                  value={editFormData.amount} 
+                  onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })} 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
+                <div className="relative">
+                  <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                  <input 
+                    placeholder="Enter details..." 
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
+                    value={editFormData.remarks} 
+                    onChange={(e) => setEditFormData({ ...editFormData, remarks: e.target.value })} 
+                  />
+                </div>
               </div>
               <div className="flex gap-4 pt-4">
                 <button onClick={() => setIsEditModalOpen(false)} className="flex-grow py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">Cancel</button>
-                <button onClick={saveModification} className="flex-grow py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none flex items-center justify-center gap-2"><Save className="w-5 h-5" />Update</button>
+                <button onClick={saveModification} disabled={submitting || !editFormData.amount || parseFloat(editFormData.amount) === 0 || !editFormData.linkedParty} className="flex-grow py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"><Save className="w-5 h-5" />Update</button>
               </div>
             </div>
           </div>
