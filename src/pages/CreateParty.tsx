@@ -25,7 +25,7 @@ const CreateParty = () => {
     partyName: '',
     status: 'take', // take or give
     commissionType: 'with', // with or without
-    commissionRate: '3' // default 3% for take
+    commissionRate: '3.5' // default 3.5% for take
   });
 
   const fetchNextSrNo = async () => {
@@ -52,7 +52,7 @@ const CreateParty = () => {
   // Auto-update rate based on status
   useEffect(() => {
     if (formData.commissionType === 'with') {
-      const newRate = formData.status === 'take' ? '3' : '1';
+      const newRate = formData.status === 'take' ? '3.5' : '1';
       setFormData(prev => ({ ...prev, commissionRate: newRate }));
     } else {
       setFormData(prev => ({ ...prev, commissionRate: '0' }));
@@ -93,7 +93,7 @@ const CreateParty = () => {
         partyName: '',
         status: 'take',
         commissionType: 'with',
-        commissionRate: '3'
+        commissionRate: '3.5'
       });
       // Fetch the next serial number for the next entry
       await fetchNextSrNo();
