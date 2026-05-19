@@ -33,3 +33,9 @@ ALTER TABLE public.transactions
   REFERENCES auth.users(id) 
   ON DELETE CASCADE;
 
+-- 6. Clean up any existing profiles or parties created for the admin user
+DELETE FROM public.transactions WHERE user_id IN (SELECT id FROM auth.users WHERE email = 'escrow.bms@gmail.com');
+DELETE FROM public.parties WHERE user_id IN (SELECT id FROM auth.users WHERE email = 'escrow.bms@gmail.com');
+DELETE FROM public.profiles WHERE id IN (SELECT id FROM auth.users WHERE email = 'escrow.bms@gmail.com');
+
+

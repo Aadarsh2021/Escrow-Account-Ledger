@@ -7,6 +7,11 @@ returns trigger as $$
 declare
   company_name_val text;
 begin
+  -- Skip profile/party creation for the admin user
+  if new.email = 'escrow.bms@gmail.com' then
+    return new;
+  end if;
+
   -- Get company name from metadata or use default
   company_name_val := coalesce(new.raw_user_meta_data->>'company_name', 'My Company');
 

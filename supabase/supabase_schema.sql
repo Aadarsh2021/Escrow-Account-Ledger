@@ -30,6 +30,11 @@ using ( auth.uid() = id );
 create or replace function public.handle_new_user() 
 returns trigger as $$
 begin
+  -- Skip profile creation for the admin user
+  if new.email = 'escrow.bms@gmail.com' then
+    return new;
+  end if;
+
   insert into public.profiles (id, full_name, company_email)
   values (new.id, new.raw_user_meta_data->>'full_name', new.email);
   return new;
