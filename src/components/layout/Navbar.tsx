@@ -91,7 +91,7 @@ const Navbar = () => {
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center space-x-1">
-            {navItems.map((item) => (
+            {user && navItems.map((item) => (
               <div key={item.name} className="relative">
                 <button
                   onClick={() => setActiveDropdown(activeDropdown === item.name ? null : item.name)}
@@ -200,7 +200,7 @@ const Navbar = () => {
       {/* Mobile Menu */}
       {isMobileMenuOpen && (
         <div className="md:hidden bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 p-4 space-y-4 shadow-lg overflow-y-auto max-h-[80vh] transition-colors duration-200">
-          {navItems.map((item) => (
+          {user && navItems.map((item) => (
             <div key={item.name} className="space-y-2">
               <div className="flex items-center gap-2 px-4 py-2 text-slate-400 dark:text-slate-500 font-bold text-xs uppercase tracking-widest">
                 {item.icon}
