@@ -25,6 +25,9 @@ create or replace function public.handle_settlement_deletion()
 returns trigger as $$
 begin
   if (old.is_settlement = true) then
+    -- Enable transaction-local lock bypass
+    perform set_config('app.bypass_monday_final_lock', 'true', true);
+
     -- 1. Unlock all transactions that were part of this settlement
     update public.transactions
     set is_finalized = false, settlement_id = null

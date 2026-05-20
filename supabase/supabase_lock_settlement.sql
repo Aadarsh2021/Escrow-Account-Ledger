@@ -41,6 +41,11 @@ $$ language plpgsql security definer;
 create or replace function public.check_party_monday_final_lock()
 returns trigger as $$
 begin
+  -- If local session bypass is active, let it pass
+  if current_setting('app.bypass_monday_final_lock', true) = 'true' then
+    return new;
+  end if;
+
   if (old.monday_final = true and new.monday_final = false) then
     raise exception 'Monday Final status cannot be changed back to Pending once finalized.';
   end if;

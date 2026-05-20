@@ -7,17 +7,12 @@ returns trigger as $$
 begin
   -- If the new transaction is NOT finalized, reset the party's monday_final status to false
   if (new.is_finalized = false or new.is_finalized is null) then
-    -- Temporarily drop the lock trigger to allow updating the parties table status
-    drop trigger if exists trg_lock_monday_final_party on public.parties;
+    -- Enable transaction-local lock bypass
+    perform set_config('app.bypass_monday_final_lock', 'true', true);
     
     update public.parties
     set monday_final = false
-    where id = new.party_id;
-    
-    -- Re-create the lock trigger
-    create trigger trg_lock_monday_final_party
-      before update on public.parties
-      for each row execute procedure public.check_party_monday_final_lock();
+    where id = new.party_id and monday_final = true; -- Only update if currently true
   end if;
   return new;
 end;

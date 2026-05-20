@@ -132,6 +132,7 @@ const LedgerView = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
   const linkedSearchRef = useRef<HTMLInputElement>(null);
+  const remarksInputRef = useRef<HTMLInputElement>(null);
   const headerSearchRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const headerDropdownRef = useRef<HTMLDivElement>(null);
@@ -171,6 +172,12 @@ const LedgerView = () => {
   useEffect(() => {
     if (selectedParty) {
       fetchTransactions(selectedParty.id);
+      
+      // Directly focus 'Transfer To' (Search Party...) input when party is opened
+      setTimeout(() => {
+        linkedSearchRef.current?.focus();
+      }, 50);
+
       const channel = supabase.channel(`ledger-${selectedParty.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => fetchTransactions(selectedParty.id)).subscribe();
       return () => { supabase.removeChannel(channel); };
     }
@@ -276,7 +283,7 @@ const LedgerView = () => {
   };
 
   const handleMondayFinal = async () => {
-    if (!selectedParty || transactions.length === 0 || submitting) return;
+    if (!selectedParty || submitting) return;
     
     setConfirmDialog({
       isOpen: true,
@@ -297,7 +304,16 @@ const LedgerView = () => {
 
           if (fErr) throw fErr;
           if (!latestTns || latestTns.length === 0) {
-            alert('No active transactions to finalize.');
+            // Update the party directly to monday_final: true when there are no transactions
+            const { error: updateErr } = await supabase
+              .from('parties')
+              .update({ monday_final: true })
+              .eq('id', selectedParty.id);
+
+            if (updateErr) throw updateErr;
+
+            fetchParties();
+            setTimeout(() => fetchTransactions(selectedParty.id), 500);
             return;
           }
 
@@ -359,6 +375,14 @@ const LedgerView = () => {
               });
               
               if (rpcError) throw rpcError;
+            } else {
+              // Update the party directly to monday_final: true when there are no transactions
+              const { error: updateErr } = await supabase
+                .from('parties')
+                .update({ monday_final: true })
+                .eq('id', pId);
+
+              if (updateErr) throw updateErr;
             }
           }
           
@@ -390,6 +414,7 @@ const LedgerView = () => {
     setRemarks('');
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
+    setIsOldRecordsView(false);
   };
 
   const togglePartySelection = (partyId: string, e: React.MouseEvent) => {
@@ -1311,18 +1336,23 @@ const LedgerView = () => {
                           onChange={(e) => { setLinkedSearch(e.target.value); setIsLinkedSearchOpen(true); setHighlightedIndex(0); }} 
                           onClick={() => setIsLinkedSearchOpen(true)} 
                           onKeyDown={(e) => { 
-                            if ((e.key === 'Enter' || e.key === 'Tab') && firstLinkedMatch) {
-                              e.preventDefault();
-                              selectLinkedParty(firstLinkedMatch);
-                            } else if(e.key === 'ArrowDown') { 
+                            if (e.key === 'ArrowDown') { 
                               setIsLinkedSearchOpen(true); 
                               setHighlightedIndex(p => Math.min(p+1, filteredLinkedParties.length-1)); 
-                            } else if(e.key === 'ArrowUp') {
+                            } else if (e.key === 'ArrowUp') {
                               setHighlightedIndex(p => Math.max(p-1, 0)); 
-                            } else if(e.key === 'Enter' && filteredLinkedParties.length > 0) { 
-                              e.preventDefault(); 
-                              selectLinkedParty(filteredLinkedParties[highlightedIndex]); 
-                            } 
+                            } else if (e.key === 'Enter' || e.key === 'Tab') {
+                              if (firstLinkedMatch) {
+                                e.preventDefault();
+                                selectLinkedParty(firstLinkedMatch);
+                              } else if (filteredLinkedParties.length > 0) {
+                                e.preventDefault();
+                                selectLinkedParty(filteredLinkedParties[highlightedIndex]);
+                              } else if (linkedParty) {
+                                e.preventDefault();
+                                amountInputRef.current?.focus();
+                              }
+                            }
                           }} 
                         />
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 pointer-events-none" />
@@ -1342,8 +1372,43 @@ const LedgerView = () => {
                         )}
                       </div>
                     </div>
-                    <div className="space-y-1.5 col-span-1"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label><input ref={amountInputRef} required type="number" step="0.01" placeholder="3000 (CR) or -3000 (DR)" className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getAmountColorClass()}`} value={amount} onChange={(e) => setAmount(e.target.value)} /></div>
-                    <div className="space-y-1.5 col-span-2"><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label><div className="relative"><Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" /><input placeholder="Enter details..." className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" value={remarks} onChange={(e) => setRemarks(e.target.value)} /></div></div>
+                    <div className="space-y-1.5 col-span-1">
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
+                      <input 
+                        ref={amountInputRef} 
+                        required 
+                        type="number" 
+                        step="0.01" 
+                        placeholder="3000 (CR) or -3000 (DR)" 
+                        className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getAmountColorClass()}`} 
+                        value={amount} 
+                        onChange={(e) => setAmount(e.target.value)} 
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            remarksInputRef.current?.focus();
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="space-y-1.5 col-span-2">
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
+                      <div className="relative">
+                        <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                        <input 
+                          ref={remarksInputRef}
+                          placeholder="Enter details..." 
+                          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
+                          value={remarks} 
+                          onChange={(e) => setRemarks(e.target.value)} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              // Enter submits the form naturally
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
                   </div>
                   <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
                 </form>
