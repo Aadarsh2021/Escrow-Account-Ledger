@@ -386,6 +386,8 @@ const LedgerView = () => {
     setSearchQuery('');
     setLinkedParty(null);
     setLinkedSearch('');
+    setAmount('');
+    setRemarks('');
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
   };
@@ -742,7 +744,7 @@ const LedgerView = () => {
     ? filteredLinkedParties.find(p => p.party_name.toLowerCase().startsWith(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(linkedSearch.toLowerCase()))
     : null;
 
-  const selectLinkedParty = (party: Party) => {
+  const selectLinkedParty = async (party: Party) => {
     setLinkedParty(party);
     setLinkedSearch(party.party_name);
     setIsLinkedSearchOpen(false);
@@ -765,8 +767,32 @@ const LedgerView = () => {
         totalVolume = mainTns.reduce((sum, t) => sum + t.credit, 0);
       } else {
         const companyParty = parties.find(p => p.system_type === 'company');
-        const companyTns = mainTns.filter(t => t.partner_party_name === companyParty?.party_name);
-        totalVolume = companyTns.reduce((sum, t) => sum + t.credit, 0);
+        if (companyParty) {
+          const companyTns = mainTns.filter(t => t.partner_party_name === companyParty.party_name);
+          const companyTnsIds = companyTns.map(ct => ct.linked_transaction_id).filter(Boolean) as string[];
+          
+          if (companyTnsIds.length > 0) {
+            const { data: companySideTns } = await supabase
+              .from('transactions')
+              .select('linked_transaction_id, is_finalized')
+              .eq('party_id', companyParty.id)
+              .in('linked_transaction_id', companyTnsIds);
+            
+            const companyFinalizedMap = new Map<string, boolean>();
+            companySideTns?.forEach(ct => {
+              if (ct.linked_transaction_id) {
+                companyFinalizedMap.set(ct.linked_transaction_id, ct.is_finalized || false);
+              }
+            });
+            
+            const activeCompanyTns = companyTns.filter(t => !t.linked_transaction_id || !companyFinalizedMap.get(t.linked_transaction_id));
+            totalVolume = activeCompanyTns.reduce((sum, t) => sum + t.credit, 0);
+          } else {
+            totalVolume = 0;
+          }
+        } else {
+          totalVolume = 0;
+        }
       }
       
       const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
@@ -791,7 +817,7 @@ const LedgerView = () => {
      ? filteredEditLinkedParties.find(p => p.party_name.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()))
      : null;
 
-  const selectEditLinkedParty = (party: Party) => {
+  const selectEditLinkedParty = async (party: Party) => {
     setEditFormData(prev => ({
       ...prev,
       linkedParty: party,
@@ -811,8 +837,32 @@ const LedgerView = () => {
         totalVolume = mainTns.reduce((sum, t) => sum + t.credit, 0);
       } else {
         const companyParty = parties.find(p => p.system_type === 'company');
-        const companyTns = mainTns.filter(t => t.partner_party_name === companyParty?.party_name);
-        totalVolume = companyTns.reduce((sum, t) => sum + t.credit, 0);
+        if (companyParty) {
+          const companyTns = mainTns.filter(t => t.partner_party_name === companyParty.party_name);
+          const companyTnsIds = companyTns.map(ct => ct.linked_transaction_id).filter(Boolean) as string[];
+          
+          if (companyTnsIds.length > 0) {
+            const { data: companySideTns } = await supabase
+              .from('transactions')
+              .select('linked_transaction_id, is_finalized')
+              .eq('party_id', companyParty.id)
+              .in('linked_transaction_id', companyTnsIds);
+            
+            const companyFinalizedMap = new Map<string, boolean>();
+            companySideTns?.forEach(ct => {
+              if (ct.linked_transaction_id) {
+                companyFinalizedMap.set(ct.linked_transaction_id, ct.is_finalized || false);
+              }
+            });
+            
+            const activeCompanyTns = companyTns.filter(t => !t.linked_transaction_id || !companyFinalizedMap.get(t.linked_transaction_id));
+            totalVolume = activeCompanyTns.reduce((sum, t) => sum + t.credit, 0);
+          } else {
+            totalVolume = 0;
+          }
+        } else {
+          totalVolume = 0;
+        }
       }
       
       const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
