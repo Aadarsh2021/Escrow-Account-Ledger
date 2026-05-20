@@ -1,7 +1,21 @@
 import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-const SUPABASE_URL = 'https://nivmzcshpgftlbjdmvtk.supabase.co';
-const SERVICE_ROLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5pdm16Y3NocGdmdGxiamRtdnRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODgxNzI3OCwiZXhwIjoyMDk0MzkzMjc4fQ.BBEXYvRXJ3zHz5eGM44dTIt5vZLFPJeLb8AXpRwqBcE';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load env configuration from root .env
+const envConfig = dotenv.parse(fs.readFileSync(path.join(__dirname, '../.env')));
+const SUPABASE_URL = envConfig.VITE_SUPABASE_URL;
+const SERVICE_ROLE_KEY = envConfig.VITE_SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+  console.error("Error: VITE_SUPABASE_URL and VITE_SUPABASE_SERVICE_ROLE_KEY must be set in .env");
+  process.exit(1);
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
