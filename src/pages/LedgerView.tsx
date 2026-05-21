@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, 
   Database, 
@@ -11,7 +11,6 @@ import {
   ArrowRightLeft, 
   FileText,
   Calendar,
-  History,
   Edit2,
   Trash2,
   CheckSquare,
@@ -63,8 +62,191 @@ const generateUUID = () => {
       });
 };
 
+const CustomDatePicker = ({ 
+  label, 
+  value, 
+  onChange 
+}: { 
+  label: string; 
+  value: string; 
+  onChange: (val: string) => void; 
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Parse initial value (YYYY-MM-DD)
+  const initialDate = value ? new Date(value) : new Date();
+  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
+
+  useEffect(() => {
+    if (value) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) {
+        setViewYear(d.getFullYear());
+        setViewMonth(d.getMonth());
+      }
+    }
+  }, [value]);
+
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
+
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return 'Select Date';
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'Select Date';
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  };
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayIndex = new Date(viewYear, viewMonth, 1).getDay();
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(prev => prev - 1);
+    } else {
+      setViewMonth(prev => prev - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(prev => prev + 1);
+    } else {
+      setViewMonth(prev => prev - 1);
+    }
+  };
+
+  const handleDateClick = (day: number) => {
+    const mm = String(viewMonth + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    onChange(`${viewYear}-${mm}-${dd}`);
+    setIsOpen(false);
+  };
+
+  const days = [];
+  // Empty slots for previous month's trailing days
+  for (let i = 0; i < firstDayIndex; i++) {
+    days.push(<div key={`empty-${i}`} className="w-8 h-8" />);
+  }
+  
+  // Current month's days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const mm = String(viewMonth + 1).padStart(2, '0');
+    const dd = String(d).padStart(2, '0');
+    const dateStr = `${viewYear}-${mm}-${dd}`;
+    const isSelected = value === dateStr;
+    const isToday = new Date().toDateString() === new Date(viewYear, viewMonth, d).toDateString();
+
+    days.push(
+      <button
+        key={`day-${d}`}
+        type="button"
+        onClick={() => handleDateClick(d)}
+        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
+          isSelected 
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-200' 
+            : isToday 
+              ? 'border border-blue-600 text-blue-600 dark:text-blue-400' 
+              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+        }`}
+      >
+        {d}
+      </button>
+    );
+  }
+
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const YEARS = Array.from({ length: 21 }, (_, i) => 2015 + i); // 2015 to 2035
+
+  return (
+    <div className="relative w-full text-left" ref={dropdownRef}>
+      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{label}</label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between px-4 py-3 mt-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl outline-none focus:border-blue-600 font-bold cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition-all"
+      >
+        <span>{formatDateDisplay(value)}</span>
+        <Calendar className="w-4 h-4 text-slate-400" />
+      </div>
+
+      {isOpen && (
+        <div className="absolute left-0 right-0 mt-2 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-[160] animate-in fade-in slide-in-from-top-2 duration-200">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4 gap-2">
+            <button 
+              type="button"
+              onClick={handlePrevMonth}
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            
+            <div className="flex gap-1.5 flex-1">
+              <select 
+                value={viewMonth} 
+                onChange={(e) => setViewMonth(parseInt(e.target.value))}
+                className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg py-1 px-1.5 text-xs font-black text-slate-800 dark:text-slate-200 outline-none"
+              >
+                {MONTH_NAMES.map((name, idx) => (
+                  <option key={name} value={idx}>{name}</option>
+                ))}
+              </select>
+
+              <select 
+                value={viewYear} 
+                onChange={(e) => setViewYear(parseInt(e.target.value))}
+                className="w-20 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg py-1 px-1.5 text-xs font-black text-slate-800 dark:text-slate-200 outline-none"
+              >
+                {YEARS.map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            <button 
+              type="button"
+              onClick={handleNextMonth}
+              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Weekday Names */}
+          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(w => (
+              <span key={w} className="text-[10px] font-bold text-slate-400">{w}</span>
+            ))}
+          </div>
+
+          {/* Days Grid */}
+          <div className="grid grid-cols-7 gap-1 justify-items-center">
+            {days}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const LedgerView = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user: authUser } = useAuth();
   const [parties, setParties] = useState<Party[]>(() => {
     try {
@@ -90,7 +272,6 @@ const LedgerView = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [closingBalance, setClosingBalance] = useState(0);
 
-  const [isOldRecordsView, setIsOldRecordsView] = useState(false);
   const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
   const [selectedTnsIds, setSelectedTnsIds] = useState<Set<string>>(new Set());
   
@@ -112,6 +293,57 @@ const LedgerView = () => {
   const [editHighlightedIndex, setEditHighlightedIndex] = useState(0);
   const editLinkedSearchRef = useRef<HTMLInputElement>(null);
   const editDropdownRef = useRef<HTMLDivElement>(null);
+
+  // DC Report State
+  const [isDcModalOpen, setIsDcModalOpen] = useState(false);
+  const [dcFromDate, setDcFromDate] = useState('');
+  const [dcToDate, setDcToDate] = useState('');
+  const [isDcLoading, setIsDcLoading] = useState(false);
+  const [dcReportData, setDcReportData] = useState<{ credit: number, debit: number, balance: number } | null>(null);
+
+  const fetchDcReport = async () => {
+    if (!selectedParty || !dcFromDate || !dcToDate) return;
+    setIsDcLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('credit, debit, tns_type')
+        .eq('party_id', selectedParty.id)
+        .gte('transaction_date', `${dcFromDate}T00:00:00.000Z`)
+        .lte('transaction_date', `${dcToDate}T23:59:59.999Z`);
+        
+      if (error) throw error;
+      
+      let totalCredit = 0;
+      let totalDebit = 0;
+      
+      if (data) {
+        data.forEach(t => {
+          totalCredit += Number(t.credit);
+          totalDebit += Number(t.debit);
+        });
+      }
+      
+      setDcReportData({
+        credit: totalCredit,
+        debit: totalDebit,
+        balance: totalCredit - totalDebit
+      });
+    } catch (err) {
+      console.error('Error fetching DC report:', err);
+      alert('Failed to fetch DC report');
+    } finally {
+      setIsDcLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isDcModalOpen) {
+      setDcReportData(null);
+      setDcFromDate('');
+      setDcToDate('');
+    }
+  }, [isDcModalOpen]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [amount, setAmount] = useState('');
@@ -169,6 +401,40 @@ const LedgerView = () => {
     }
   }, [parties, selectedParty]);
 
+  // Load party from URL query parameter on init or when parties list is loaded, or on browser back/forward
+  useEffect(() => {
+    const urlPartyId = searchParams.get('partyId');
+    if (urlPartyId) {
+      if (parties.length > 0) {
+        const foundParty = parties.find(p => p.id === urlPartyId);
+        if (foundParty) {
+          if (!selectedParty || selectedParty.id !== foundParty.id) {
+            // Use setTimeout to avoid synchronous state update warnings during render/mount phase
+            setTimeout(() => {
+              handlePartySelect(foundParty);
+            }, 0);
+          }
+        } else {
+          // Party in URL is not found, clear search param
+          setSearchParams({});
+        }
+      }
+    } else {
+      if (selectedParty) {
+        // If URL has no partyId but we have a selectedParty (e.g. browser back button pressed), clear the state
+        setSelectedParty(null);
+        setSelectedTnsIds(new Set());
+        setSearchQuery('');
+        setLinkedParty(null);
+        setLinkedSearch('');
+        setAmount('');
+        setRemarks('');
+        setIsHeaderSearchOpen(false);
+        setHeaderSearch('');
+      }
+    }
+  }, [searchParams, parties]);
+
   useEffect(() => {
     if (selectedParty) {
       fetchTransactions(selectedParty.id);
@@ -197,14 +463,14 @@ const LedgerView = () => {
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
-  const fetchTransactions = async (partyId: string, showArchived: boolean = false) => {
+  const fetchTransactions = async (partyId: string) => {
     try {
       const { data: tnsData, error: tnsError } = await supabase
         .from('transactions')
         .select('*')
         .eq('party_id', partyId)
-        .filter('is_finalized', showArchived ? 'eq' : 'neq', true) // If not archived, show anything NOT true (false or null)
-        .order('transaction_date', { ascending: true });
+        .order('transaction_date', { ascending: true })
+        .order('created_at', { ascending: true });
         
       if (tnsError) throw tnsError;
       
@@ -234,10 +500,7 @@ const LedgerView = () => {
       }
 
       setTransactions(currentTns);
-      // We only update closing balance if we are viewing active records
-      if (!showArchived) {
-        setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
-      }
+      setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
     } catch (err) { console.error(err); }
   };
 
@@ -405,6 +668,7 @@ const LedgerView = () => {
 
 
   const handlePartySelect = (party: Party) => {
+    setSearchParams({ partyId: party.id });
     setSelectedParty(party);
     setSelectedTnsIds(new Set());
     setSearchQuery('');
@@ -414,7 +678,19 @@ const LedgerView = () => {
     setRemarks('');
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
-    setIsOldRecordsView(false);
+  };
+
+  const handleExitParty = () => {
+    setSearchParams({});
+    setSelectedParty(null);
+    setSelectedTnsIds(new Set());
+    setSearchQuery('');
+    setLinkedParty(null);
+    setLinkedSearch('');
+    setAmount('');
+    setRemarks('');
+    setIsHeaderSearchOpen(false);
+    setHeaderSearch('');
   };
 
   const togglePartySelection = (partyId: string, e: React.MouseEvent) => {
@@ -453,15 +729,15 @@ const LedgerView = () => {
   };
 
   const handleDeleteTns = async () => {
-    if (selectedTnsIds.size === 0 || !selectedParty || submitting || isOldRecordsView) return;
+    if (selectedTnsIds.size === 0 || !selectedParty || submitting) return;
 
-    const hasSettlement = Array.from(selectedTnsIds).some(id => {
+    const hasSettlementOrFinalized = Array.from(selectedTnsIds).some(id => {
       const t = transactions.find(item => item.id === id);
-      return t?.is_settlement === true;
+      return t?.is_settlement === true || t?.is_finalized === true;
     });
 
-    if (hasSettlement) {
-      alert('Monday Final settlement records cannot be deleted once created.');
+    if (hasSettlementOrFinalized) {
+      alert('Monday Final settled or archived entries cannot be deleted.');
       return;
     }
 
@@ -513,13 +789,13 @@ const LedgerView = () => {
   };
 
   const handleModifyTns = async () => {
-    if (selectedTnsIds.size !== 1 || isOldRecordsView || !selectedParty) return;
+    if (selectedTnsIds.size !== 1 || !selectedParty) return;
     const tnsId = Array.from(selectedTnsIds)[0];
     const tnsA = transactions.find(t => t.id === tnsId);
     if (!tnsA) return;
 
-    if (tnsA.is_settlement) {
-      alert('Monday Final settlement records cannot be modified once created.');
+    if (tnsA.is_settlement || tnsA.is_finalized) {
+      alert('Monday Final settled or archived entries cannot be modified.');
       return;
     }
 
@@ -789,7 +1065,11 @@ const LedgerView = () => {
       
       let totalVolume = 0;
       if (isTake) {
-        totalVolume = mainTns.reduce((sum, t) => sum + t.credit, 0);
+        const lastDebitIdx = [...mainTns].reverse().findIndex(t => t.debit > 0);
+        const uncommissionedCredits = lastDebitIdx === -1 
+          ? mainTns 
+          : mainTns.slice(mainTns.length - lastDebitIdx);
+        totalVolume = uncommissionedCredits.reduce((sum, t) => sum + t.credit, 0);
       } else {
         const companyParty = parties.find(p => p.system_type === 'company');
         if (companyParty) {
@@ -859,7 +1139,11 @@ const LedgerView = () => {
       
       let totalVolume = 0;
       if (isTake) {
-        totalVolume = mainTns.reduce((sum, t) => sum + t.credit, 0);
+        const lastDebitIdx = [...mainTns].reverse().findIndex(t => t.debit > 0);
+        const uncommissionedCredits = lastDebitIdx === -1 
+          ? mainTns 
+          : mainTns.slice(mainTns.length - lastDebitIdx);
+        totalVolume = uncommissionedCredits.reduce((sum, t) => sum + t.credit, 0);
       } else {
         const companyParty = parties.find(p => p.system_type === 'company');
         if (companyParty) {
@@ -1048,42 +1332,32 @@ const LedgerView = () => {
     }
   };
 
-  const hasSettlementSelected = Array.from(selectedTnsIds).some(id => {
+  const hasSettlementOrFinalizedSelected = Array.from(selectedTnsIds).some(id => {
     const t = transactions.find(item => item.id === id);
-    return t?.is_settlement === true;
+    return t?.is_settlement === true || t?.is_finalized === true;
   });
 
   const sidebarButtons = [
     { name: 'Refresh All', icon: <RefreshCcw className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => fetchTransactions(selectedParty?.id || '') },
-    { name: 'DC Report', icon: <FileText className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => {} },
-    { name: 'Monday Final', icon: <Calendar className="w-4 h-4" />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', action: handleMondayFinal, disabled: isOldRecordsView },
-    { 
-      name: isOldRecordsView ? 'Active Ledger' : 'Old Record', 
-      icon: <History className="w-4 h-4" />, 
-      color: isOldRecordsView ? 'bg-orange-600 text-white shadow-md shadow-orange-200' : 'bg-slate-100 text-slate-600', 
-      action: () => {
-        const nextState = !isOldRecordsView;
-        setIsOldRecordsView(nextState);
-        fetchTransactions(selectedParty!.id, nextState);
-      } 
-    },
+    { name: 'DC Report', icon: <FileText className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => setIsDcModalOpen(true) },
+    { name: 'Monday Final', icon: <Calendar className="w-4 h-4" />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', action: handleMondayFinal },
     { 
       name: 'Modify', 
       icon: <Edit2 className="w-4 h-4" />, 
-      color: (isOldRecordsView || hasSettlementSelected) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white shadow-md shadow-blue-200', 
+      color: hasSettlementOrFinalizedSelected ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white shadow-md shadow-blue-200', 
       action: handleModifyTns, 
-      disabled: selectedTnsIds.size !== 1 || isOldRecordsView || hasSettlementSelected
+      disabled: selectedTnsIds.size !== 1 || hasSettlementOrFinalizedSelected
     },
     { 
       name: 'Delete', 
       icon: <Trash2 className="w-4 h-4" />, 
-      color: (isOldRecordsView || hasSettlementSelected) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-600 text-white shadow-md shadow-rose-200', 
+      color: hasSettlementOrFinalizedSelected ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-600 text-white shadow-md shadow-rose-200', 
       action: handleDeleteTns, 
-      disabled: selectedTnsIds.size === 0 || isOldRecordsView || hasSettlementSelected
+      disabled: selectedTnsIds.size === 0 || hasSettlementOrFinalizedSelected
     },
     { name: 'Print', icon: <Printer className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => window.print() },
     { name: 'Check All', icon: <CheckSquare className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => toggleSelectAllTns() },
-    { name: 'Exit', icon: <XCircle className="w-4 h-4" />, color: 'bg-orange-500 text-white shadow-md shadow-orange-200', action: () => setSelectedParty(null) },
+    { name: 'Exit', icon: <XCircle className="w-4 h-4" />, color: 'bg-orange-500 text-white shadow-md shadow-orange-200', action: handleExitParty },
   ];
 
   if (loading) return <GlobalLoader fullScreen={true} />;
@@ -1203,7 +1477,7 @@ const LedgerView = () => {
         <div className="flex flex-col h-auto lg:h-full lg:overflow-hidden">
           <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3 flex flex-col md:flex-row gap-4 md:items-center justify-between shrink-0 shadow-sm z-20 transition-colors duration-200">
             <div className="flex items-start md:items-center gap-3 md:gap-4">
-              <button onClick={() => setSelectedParty(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0"><ArrowLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
+              <button onClick={handleExitParty} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0"><ArrowLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
               <div className="flex flex-wrap items-center gap-2 md:gap-4" ref={headerDropdownRef}>
                 <div className="relative w-full sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
@@ -1289,7 +1563,19 @@ const LedgerView = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
                       {transactions.map((t) => (
-                        <tr key={t.id} onClick={() => toggleTnsSelection(t.id)} className={`cursor-pointer transition-all ${selectedTnsIds.has(t.id) ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' : t.is_settlement ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}>
+                        <tr 
+                          key={t.id} 
+                          onClick={() => toggleTnsSelection(t.id)} 
+                          className={`cursor-pointer transition-all ${
+                            selectedTnsIds.has(t.id) 
+                              ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' 
+                              : t.is_settlement 
+                                ? 'bg-blue-50/80 dark:bg-blue-950/30 border-l-4 border-blue-500' 
+                                : t.is_finalized 
+                                  ? 'opacity-70 hover:opacity-90 bg-slate-50/40 dark:bg-slate-900/20 border-l-4 border-slate-300 dark:border-slate-700' 
+                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'
+                          }`}
+                        >
                           <td className="px-6 py-3 text-center"><div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}><div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div></div></td>
                           <td className={`px-6 py-3 text-[10px] ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{new Date(t.transaction_date).toLocaleDateString()}</td>
                           <td className="px-6 py-3 font-bold">
@@ -1314,7 +1600,7 @@ const LedgerView = () => {
                 </div>
               </div>
               <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
-                <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
+                <form onSubmit={handleSubmitEntry} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end">
                   <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="space-y-1.5 col-span-1 relative" ref={dropdownRef}><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
                       <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
@@ -1410,7 +1696,7 @@ const LedgerView = () => {
                       </div>
                     </div>
                   </div>
-                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
+                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
                 </form>
               </div>
             </div>
@@ -1572,6 +1858,89 @@ const LedgerView = () => {
           </div>
         </div>
       )}
+
+      {/* DC Report Modal */}
+      {isDcModalOpen && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsDcModalOpen(false)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-8 overflow-visible animate-in zoom-in-95 duration-200">
+            <button onClick={() => setIsDcModalOpen(false)} className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-all">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6">
+              {dcReportData ? 'DC Report' : 'Generate DC Report'}
+            </h3>
+            
+            {!dcReportData ? (
+              <div className="space-y-4">
+                <CustomDatePicker 
+                  label="From Date" 
+                  value={dcFromDate} 
+                  onChange={setDcFromDate} 
+                />
+                <CustomDatePicker 
+                  label="To Date" 
+                  value={dcToDate} 
+                  onChange={setDcToDate} 
+                />
+                <button 
+                  onClick={fetchDcReport}
+                  disabled={!dcFromDate || !dcToDate || isDcLoading}
+                  className="w-full py-4 mt-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {isDcLoading ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
+                  Generate Report
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="text-sm font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 py-3 px-4 rounded-xl border border-slate-100 dark:border-slate-800 text-center">
+                  Period: <span className="text-slate-800 dark:text-slate-200 font-black">{dcFromDate}</span> to <span className="text-slate-800 dark:text-slate-200 font-black">{dcToDate}</span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 p-5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 relative text-center divide-x divide-slate-200 dark:divide-slate-800">
+                  {isDcLoading && (
+                    <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-2xl flex items-center justify-center z-10">
+                      <RefreshCcw className="w-6 h-6 animate-spin text-blue-600" />
+                    </div>
+                  )}
+                  <div className="flex flex-col items-center justify-center px-2">
+                    <span className="text-[10px] font-black text-emerald-600/70 uppercase tracking-widest mb-1.5">Total Credit</span>
+                    <span className="text-lg md:text-xl font-black text-emerald-600">₹{(dcReportData?.credit || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center px-2">
+                    <span className="text-[10px] font-black text-rose-600/70 uppercase tracking-widest mb-1.5">Total Debit</span>
+                    <span className="text-lg md:text-xl font-black text-rose-600">₹{(dcReportData?.debit || 0).toLocaleString()}</span>
+                  </div>
+                  <div className="flex flex-col items-center justify-center px-2">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Net Balance</span>
+                    <span className={`text-lg md:text-xl font-black flex items-baseline gap-1 ${(dcReportData?.balance || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      ₹{Math.abs(dcReportData?.balance || 0).toLocaleString()} 
+                      <span className="text-xs font-bold opacity-80">{(dcReportData?.balance || 0) >= 0 ? '(CR)' : '(DR)'}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setDcReportData(null)}
+                    className="flex-1 py-4 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95"
+                  >
+                    Change Dates
+                  </button>
+                  <button 
+                    onClick={() => setIsDcModalOpen(false)}
+                    className="flex-1 py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black rounded-2xl hover:opacity-90 transition-all active:scale-95"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
