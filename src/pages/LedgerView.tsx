@@ -272,6 +272,7 @@ const LedgerView = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [closingBalance, setClosingBalance] = useState(0);
+  const [printTransactions, setPrintTransactions] = useState<Transaction[]>([]);
 
   const [isOldRecordsView, setIsOldRecordsView] = useState(false);
   const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
@@ -441,13 +442,17 @@ const LedgerView = () => {
   useEffect(() => {
     if (selectedParty) {
       fetchTransactions(selectedParty.id);
+      fetchAllTransactionsForPrint(selectedParty.id);
       
       // Directly focus 'Transfer To' (Search Party...) input when party is opened
       setTimeout(() => {
         linkedSearchRef.current?.focus();
       }, 50);
 
-      const channel = supabase.channel(`ledger-${selectedParty.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => fetchTransactions(selectedParty.id)).subscribe();
+      const channel = supabase.channel(`ledger-${selectedParty.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => {
+        fetchTransactions(selectedParty.id);
+        fetchAllTransactionsForPrint(selectedParty.id);
+      }).subscribe();
       return () => { supabase.removeChannel(channel); };
     }
   }, [selectedParty]);
@@ -508,6 +513,47 @@ const LedgerView = () => {
         setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
       }
     } catch (err) { console.error(err); }
+  };
+
+  const fetchAllTransactionsForPrint = async (partyId: string) => {
+    try {
+      const { data: tnsData, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('party_id', partyId)
+        .order('transaction_date', { ascending: true })
+        .order('created_at', { ascending: true });
+        
+      if (error) throw error;
+      
+      const currentTns = tnsData || [];
+      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
+      if (linkedIds.length > 0) {
+        const { data: partnerData } = await supabase
+          .from('transactions')
+          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
+          .in('linked_transaction_id', linkedIds)
+          .neq('party_id', partyId);
+        
+        if (partnerData) {
+          const partnerMap = new Map<string, string>();
+          partnerData.forEach((p: any) => {
+            if (p.parties?.system_type !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
+              partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+            }
+          });
+          
+          currentTns.forEach(t => {
+            if (t.linked_transaction_id) {
+              t.partner_party_name = partnerMap.get(t.linked_transaction_id);
+            }
+          });
+        }
+      }
+      setPrintTransactions(currentTns);
+    } catch (err) {
+      console.error('Error fetching all transactions for print:', err);
+    }
   };
 
   const recalculateBalances = async (partyId: string) => {
@@ -582,7 +628,10 @@ const LedgerView = () => {
             if (updateErr) throw updateErr;
 
             fetchParties();
-            setTimeout(() => fetchTransactions(selectedParty.id), 500);
+            setTimeout(() => {
+              fetchTransactions(selectedParty.id);
+              fetchAllTransactionsForPrint(selectedParty.id);
+            }, 500);
             return;
           }
 
@@ -600,7 +649,10 @@ const LedgerView = () => {
 
           // Refresh the ledger and the party list
           fetchParties();
-          setTimeout(() => fetchTransactions(selectedParty.id), 500);
+          setTimeout(() => {
+            fetchTransactions(selectedParty.id);
+            fetchAllTransactionsForPrint(selectedParty.id);
+          }, 500);
         } catch (err) {
           console.error('Monday Final Error:', err);
           alert('Failed to finalize: ' + (err as any).message);
@@ -1346,7 +1398,7 @@ const LedgerView = () => {
   });
 
   const sidebarButtons = [
-    { name: 'Refresh All', icon: <RefreshCcw className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => fetchTransactions(selectedParty?.id || '') },
+    { name: 'Refresh All', icon: <RefreshCcw className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => { if (selectedParty) { fetchTransactions(selectedParty.id, isOldRecordsView); fetchAllTransactionsForPrint(selectedParty.id); } } },
     { name: 'DC Report', icon: <FileText className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => setIsDcModalOpen(true) },
     { name: 'Monday Final', icon: <Calendar className="w-4 h-4" />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', action: handleMondayFinal, disabled: isOldRecordsView },
     { 
@@ -1380,8 +1432,14 @@ const LedgerView = () => {
 
   if (loading) return <GlobalLoader fullScreen={true} />;
 
+  // Calculations for Print Ledger - Exclude settlement records from totals to prevent double-counting
+  const printTotalCredit = printTransactions.filter(t => !t.is_settlement).reduce((sum, t) => sum + Number(t.credit || 0), 0);
+  const printTotalDebit = printTransactions.filter(t => !t.is_settlement).reduce((sum, t) => sum + Number(t.debit || 0), 0);
+  const printFinalBalance = printTransactions.length > 0 ? printTransactions[printTransactions.length - 1].balance : 0;
+
   return (
-    <div className="flex flex-col h-auto lg:h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 transition-colors duration-200">
+    <>
+      <div className="flex flex-col h-auto lg:h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 transition-colors duration-200 print:hidden">
       {!selectedParty ? (
         <div className="max-w-6xl mx-auto w-full px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -1947,7 +2005,180 @@ const LedgerView = () => {
         </div>
       )}
 
-    </div>
+      </div>
+
+      {/* Premium Printable PDF Layout */}
+      {selectedParty && (
+        <div className="hidden print:block bg-white text-black p-4 min-h-screen">
+          {/* Custom style overrides for high quality printing */}
+          <style dangerouslySetInnerHTML={{ __html: `
+            @media print {
+              body {
+                background: white !important;
+                color: black !important;
+                font-family: 'Inter', system-ui, sans-serif !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+              }
+              @page {
+                size: A4 portrait;
+                margin: 1.2cm 1.5cm;
+              }
+              .print-container {
+                max-width: 100% !important;
+                width: 100% !important;
+              }
+              .no-page-break {
+                page-break-inside: avoid !important;
+              }
+              table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                margin-top: 15px !important;
+              }
+              th {
+                background-color: #f1f5f9 !important;
+                color: #0f172a !important;
+                border: 1px solid #cbd5e1 !important;
+                padding: 10px 12px !important;
+                font-size: 10px !important;
+                font-weight: 800 !important;
+                text-transform: uppercase !important;
+                letter-spacing: 0.05em !important;
+              }
+              td {
+                border: 1px solid #e2e8f0 !important;
+                padding: 8px 12px !important;
+                font-size: 10px !important;
+              }
+              tr:nth-child(even) {
+                background-color: #f8fafc !important;
+              }
+            }
+          `}} />
+
+          {/* Letterhead Header */}
+          <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
+            <div>
+              <h1 className="text-2xl font-black tracking-tight text-slate-900">ESCROW LEDGER SERVICES</h1>
+              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Secure Transaction Ledgers & Financial Settlements</p>
+            </div>
+            <div className="text-right text-[10px] text-slate-500 font-medium">
+              <p>Web: escrow-ledger.web.app</p>
+              <p>Email: support@escrow-ledger.com</p>
+            </div>
+          </div>
+
+          {/* Statement Info Title */}
+          <div className="text-center mb-8">
+            <h2 className="text-xl font-extrabold text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-1.5 inline-block px-4">
+              Account Statement
+            </h2>
+            <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Complete History (Start to Finish)</p>
+          </div>
+
+          {/* Party and Statement Metadata Grid */}
+          <div className="grid grid-cols-2 gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-100 mb-6 text-sm">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Party Details</p>
+              <h3 className="text-lg font-black text-slate-900 leading-tight">{selectedParty.party_name}</h3>
+              <p className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
+                <span className="bg-slate-200 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-700">SR NO: {selectedParty.sr_no}</span>
+                <span className="uppercase font-bold text-blue-600">({selectedParty.status})</span>
+                {selectedParty.system_type === 'normal' && <span className="text-slate-400">| Comm Rate: {selectedParty.commission_rate}%</span>}
+              </p>
+            </div>
+            <div className="space-y-1 text-right text-xs text-slate-600 font-medium">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Statement Details</p>
+              <p><span className="font-bold text-slate-800">Generated On:</span> {new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+              <p><span className="font-bold text-slate-800">Period:</span> Full History (Start to Finish)</p>
+              <p><span className="font-bold text-slate-800">Records Shown:</span> {printTransactions.length} Entries</p>
+            </div>
+          </div>
+
+          {/* Financial Summary Box */}
+          <div className="grid grid-cols-3 gap-1 bg-slate-50 rounded-2xl border border-slate-200 text-center divide-x divide-slate-200 p-4 mb-6">
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Credit</span>
+              <span className="text-base font-black text-emerald-600">₹ {printTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">Total Debit</span>
+              <span className="text-base font-black text-rose-600">₹ {printTotalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Statement Balance</span>
+              <span className={`text-base font-black ${printFinalBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                ₹ {Math.abs(printFinalBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {printFinalBalance >= 0 ? 'CR' : 'DR'}
+              </span>
+            </div>
+          </div>
+
+          {/* Transaction Table */}
+          {printTransactions.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl text-slate-400 font-medium">
+              No transactions found in full history.
+            </div>
+          ) : (
+            <table className="w-full text-left">
+              <thead>
+                <tr>
+                  <th className="w-24 text-center">Date</th>
+                  <th>Particulars / Remarks</th>
+                  <th className="w-36 text-right">Credit (₹)</th>
+                  <th className="w-36 text-right">Debit (₹)</th>
+                  <th className="w-40 text-right">Balance (₹)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 font-medium">
+                {printTransactions.map((t) => (
+                  <tr key={t.id} className="no-page-break">
+                    <td className="text-center text-slate-500 font-mono text-[9px]">
+                      {new Date(t.transaction_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td>
+                      {!t.is_settlement ? (
+                        <span className="font-bold text-slate-900 uppercase tracking-tight text-[10px]">
+                          {t.partner_party_name || '-'}
+                        </span>
+                      ) : (
+                        <span className="font-extrabold text-blue-700 text-[10px] tracking-wide">
+                          MONDAY FINAL SETTLEMENT
+                        </span>
+                      )}
+                      {t.remarks && t.remarks !== 'MONDAY FINAL SETTLEMENT' && (
+                        <span className={`ml-2 text-[9px] italic ${t.is_settlement ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
+                          ({t.remarks})
+                        </span>
+                      )}
+                    </td>
+                    <td className="text-right text-emerald-600 font-bold">
+                      {!t.is_settlement && t.credit > 0 ? `₹ ${t.credit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    </td>
+                    <td className="text-right text-rose-600 font-bold">
+                      {!t.is_settlement && t.debit > 0 ? `₹ ${t.debit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                    </td>
+                    <td className={`text-right font-black ${t.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      ₹ {Math.abs(t.balance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.balance >= 0 ? 'Cr' : 'Dr'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          {/* Footer Signature Details */}
+          <div className="mt-16 no-page-break flex justify-between items-end px-4 text-xs font-semibold text-slate-500">
+            <div>
+              <p className="border-t border-slate-300 w-44 text-center pt-1.5 uppercase tracking-wider text-[9px] font-black">Prepared By</p>
+            </div>
+            <div>
+              <p className="border-t border-slate-300 w-44 text-center pt-1.5 uppercase tracking-wider text-[9px] font-black">Authorized Signatory</p>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
