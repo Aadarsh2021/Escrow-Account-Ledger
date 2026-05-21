@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
+import { AdminModals } from '../components/admin/AdminModals';
+import { AdminOverview } from '../components/admin/AdminOverview';
+import { SystemGuards } from '../components/admin/SystemGuards';
+import type { AuditLog } from '../components/admin/SystemGuards';
 import { 
-  Users, Shield, RefreshCw, LogOut, Search, ShieldCheck, 
+  Users, Shield, RefreshCw, LogOut, Search, Activity, 
   Settings, Key, Eye, Clock, Trash2, 
-  AlertTriangle, Database, Cpu, Activity,
-  Info, Megaphone, ChevronLeft, ChevronRight, Copy
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 interface AdminStats {
@@ -30,14 +33,6 @@ interface AdminUser {
   client_count: number;
   invoice_count: number;
   last_invoice_created_at: string | null;
-}
-
-interface AuditLog {
-  id: string;
-  action_type: string;
-  target_id: string | null;
-  admin_email: string;
-  created_at: string;
 }
 
 const AdminDashboard = () => {
@@ -459,107 +454,13 @@ const AdminDashboard = () => {
         
         {/* TAB 1: OVERVIEW */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
-            
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {[
-                { label: 'Registered Entities', value: stats.total_users, color: 'text-blue-600', bg: 'bg-blue-50 border-blue-100', icon: <Users className="w-6 h-6 text-blue-600" /> },
-                { label: 'Active (30d)', value: stats.active_users, color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-100', icon: <Activity className="w-6 h-6 text-emerald-600" /> },
-                { label: 'Total Parties', value: stats.total_clients, color: 'text-indigo-600', bg: 'bg-indigo-50 border-indigo-100', icon: <Cpu className="w-6 h-6 text-indigo-600" /> },
-                { label: 'Total Transactions', value: stats.total_invoices, color: 'text-amber-600', bg: 'bg-amber-50 border-amber-100', icon: <Database className="w-6 h-6 text-amber-600" /> },
-              ].map((card, i) => (
-                <div key={i} className="bg-white border border-slate-200/80 rounded-3xl p-6 flex items-center justify-between shadow-sm relative overflow-hidden group hover:shadow-md transition-shadow">
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{card.label}</p>
-                    <p className={`text-3xl font-black ${card.color} tracking-tight`}>
-                      {loading ? '...' : card.value}
-                    </p>
-                  </div>
-                  <div className={`p-4 rounded-2xl ${card.bg} border shrink-0 transition-transform group-hover:scale-110`}>
-                    {card.icon}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Performance Indicators */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">Platform Health Monitor</h3>
-                    <p className="text-slate-500 text-xs font-semibold">Real-time status indicators</p>
-                  </div>
-                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black border border-emerald-100">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    ONLINE & HEALTHY
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { label: 'API Latency', value: '45ms', desc: 'Optimal server transit', icon: <Activity className="w-5 h-5 text-blue-600" /> },
-                    { label: 'DB Connections', value: '14/100', desc: 'Active session pool', icon: <Database className="w-5 h-5 text-emerald-600" /> },
-                    { label: 'Infrastructure CPU', value: '6%', desc: 'Platform load metrics', icon: <Cpu className="w-5 h-5 text-amber-600" /> },
-                  ].map((comp, idx) => (
-                    <div key={idx} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="p-2 bg-white rounded-xl border border-slate-200/60 shadow-sm">
-                          {comp.icon}
-                        </div>
-                        <span className="text-[9px] font-extrabold uppercase bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded border border-emerald-100">Optimal</span>
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-slate-500">{comp.label}</p>
-                        <p className="text-xl font-black text-slate-900 mt-0.5">{comp.value}</p>
-                        <p className="text-[10px] text-slate-400 font-bold mt-1">{comp.desc}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Maintenance / Quick Settings summary */}
-              <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm flex flex-col justify-between">
-                <div className="space-y-4">
-                  <div>
-                    <h3 className="text-base font-black text-slate-900">Active Infrastructure Guards</h3>
-                    <p className="text-slate-500 text-xs font-semibold">Quick dashboard guard overview</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${maintenanceMode ? 'bg-amber-500' : 'bg-slate-300'}`} />
-                        <span className="text-xs font-bold text-slate-700">Maintenance Mode</span>
-                      </div>
-                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${maintenanceMode ? 'bg-amber-50 text-amber-600 border border-amber-100' : 'bg-slate-200/60 text-slate-500 border border-slate-300/40'}`}>
-                        {maintenanceMode ? 'ACTIVE' : 'INACTIVE'}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2.5 h-2.5 rounded-full ${publicSignups ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                        <span className="text-xs font-bold text-slate-700">Public Registrations</span>
-                      </div>
-                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded ${publicSignups ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
-                        {publicSignups ? 'OPEN' : 'LOCKED'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => setActiveTab('system')}
-                  className="w-full mt-6 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-bold rounded-xl border border-slate-200 transition-all text-xs text-center shadow-sm"
-                >
-                  Configure Guards
-                </button>
-              </div>
-            </div>
-          </div>
+          <AdminOverview
+            stats={stats}
+            loading={loading}
+            maintenanceMode={maintenanceMode}
+            publicSignups={publicSignups}
+            setActiveTab={setActiveTab}
+          />
         )}
 
         {/* TAB 2: USER DIRECTORY */}
@@ -827,606 +728,65 @@ const AdminDashboard = () => {
 
         {/* TAB 3: SYSTEM GUARDS */}
         {activeTab === 'system' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Platform Settings & Controls */}
-            <div className="lg:col-span-2 space-y-6">
-              <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6">
-                <div>
-                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-blue-600" />
-                    Security & Guard Protocols
-                  </h3>
-                  <p className="text-slate-500 text-xs font-semibold">Control register constraints and routing boundaries</p>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Maintenance toggle */}
-                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-slate-900">Platform Maintenance Mode</p>
-                      <p className="text-slate-400 text-[10px] font-bold leading-relaxed max-w-md">
-                        Enabling this blocks dashboard access for all business profiles and redirects them to a maintenance notice.
-                      </p>
-                    </div>
-                    
-                    <button
-                      onClick={() => setIsMaintenanceOpen(true)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                        maintenanceMode ? 'bg-amber-500' : 'bg-slate-200'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          maintenanceMode ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-
-                  {/* Public signups toggle */}
-                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200/80 rounded-2xl">
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-slate-900">Public Registrations Gate</p>
-                      <p className="text-slate-400 text-[10px] font-bold leading-relaxed max-w-md">
-                        Enables or disables signups for new business entities. If locked, new profiles cannot be registered.
-                      </p>
-                    </div>
-
-                    <button
-                      onClick={() => setIsSignupsOpen(true)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                        publicSignups ? 'bg-emerald-600' : 'bg-rose-600'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                          publicSignups ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Announcements broadcast panel */}
-              <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm relative overflow-hidden">
-                <div className="absolute -bottom-6 -right-6 text-slate-100 pointer-events-none">
-                  <Megaphone className="w-28 h-28" />
-                </div>
-
-                <div className="relative z-10 space-y-4">
-                  <div className="flex items-center gap-2">
-                    <Megaphone className="w-5 h-5 text-blue-600 animate-bounce" />
-                    <div>
-                      <h3 className="text-base font-black text-slate-900">Global Broadcast Notice</h3>
-                      <p className="text-slate-500 text-xs font-semibold">Publish dynamic banner announcements across logged-in profiles</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3 pt-2">
-                    <textarea
-                      placeholder="Type a notice to broadcast to all clients (e.g. 'Server maintenance scheduled for Sunday midnight...')"
-                      value={broadcastMessage}
-                      onChange={(e) => setBroadcastMessage(e.target.value)}
-                      className="w-full min-h-24 p-4 bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold rounded-2xl placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none resize-none"
-                    />
-
-                    <button
-                      onClick={handlePublishBroadcast}
-                      disabled={isBroadcastPublishing}
-                      className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/10 hover:shadow-blue-600/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                    >
-                      {isBroadcastPublishing ? (
-                        <>
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                          Publishing notice...
-                        </>
-                      ) : (
-                        "Publish Notice to Dashboard Banners"
-                      )}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Audit Logs Trail */}
-            <div className="bg-white border border-slate-200/80 rounded-3xl p-6 shadow-sm space-y-6 h-fit">
-              <div>
-                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                  <Activity className="w-5 h-5 text-blue-600" />
-                  Audit Trail
-                </h3>
-                <p className="text-slate-500 text-xs font-semibold">Real-time administrator security event logging</p>
-              </div>
-
-              <div className="space-y-3.5 max-h-[360px] overflow-y-auto pr-1">
-                {auditLogs.length === 0 ? (
-                  <div className="text-center py-10">
-                    <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-slate-400 text-xs font-bold">No administrative actions logged yet</p>
-                  </div>
-                ) : (
-                  auditLogs.map((log) => (
-                    <div key={log.id} className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-2">
-                      <div className="flex items-center justify-between text-[10px]">
-                        <span className="font-extrabold uppercase bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded border border-blue-100">
-                          {log.action_type}
-                        </span>
-                        <span className="text-slate-400 font-semibold">{formatDateTime(log.created_at)}</span>
-                      </div>
-                      
-                      {log.target_id && (
-                        <p className="text-[10px] text-slate-600 font-bold font-mono bg-slate-100 px-2 py-1 rounded break-all">
-                          Target: {log.target_id}
-                        </p>
-                      )}
-
-                      <p className="text-[10px] text-slate-400 font-bold italic">
-                        By admin: {log.admin_email}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <SystemGuards
+            maintenanceMode={maintenanceMode}
+            publicSignups={publicSignups}
+            broadcastMessage={broadcastMessage}
+            setBroadcastMessage={setBroadcastMessage}
+            isBroadcastPublishing={isBroadcastPublishing}
+            handlePublishBroadcast={handlePublishBroadcast}
+            setIsMaintenanceOpen={setIsMaintenanceOpen}
+            setIsSignupsOpen={setIsSignupsOpen}
+            auditLogs={auditLogs}
+            formatDateTime={formatDateTime}
+          />
         )}
       </main>
 
       {/* -------------------- MODALS & DIALOGS -------------------- */}
-
-      {/* Modal 1: Analysis Details */}
-      {isDetailsOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
-              <Info className="w-5 h-5 text-blue-600" />
-              Entity Analytics & Details
-            </h3>
-
-            <div className="py-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-slate-200/60">
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Business Name</p>
-                    <p className="font-bold text-lg text-slate-900">{selectedUser.company_name || 'Individual Profile'}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Registered UID</p>
-                    <div className="flex items-center gap-2">
-                      <code className="text-[10px] bg-slate-50 border border-slate-200 px-2 py-1 rounded font-mono text-slate-700 break-all select-all shadow-sm">
-                        {selectedUser.user_id}
-                      </code>
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(selectedUser.user_id);
-                          toast.success("UID copied!");
-                        }}
-                        className="p-1 text-slate-400 hover:text-slate-800"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Email Account</p>
-                    <p className="text-sm font-bold text-slate-700">{selectedUser.email}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Workspace Database Metrics</p>
-                    <p className="text-xs font-bold text-slate-600">
-                      Has created <span className="text-slate-900 font-extrabold">{selectedUser.client_count}</span> parties & <span className="text-slate-900 font-extrabold">{selectedUser.invoice_count}</span> transactions.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Access detail card */}
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4 relative overflow-hidden">
-                <div className="flex items-center justify-between relative z-10">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Ledger subscription Protocol</span>
-                  </div>
-                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                    selectedUser.is_blocked 
-                      ? 'bg-rose-50 text-rose-600 border border-rose-100' 
-                      : 'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                  }`}>
-                    {selectedUser.is_blocked ? 'SUSPENDED' : 'ACTIVE HEALTH'}
-                  </span>
-                </div>
-
-                <div className="space-y-1 relative z-10">
-                  <h4 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                    {selectedUser.subscription_expires_at ? 'Paid Premium' : 'Free Trial Tier'}
-                    <Sparkles className="w-4 h-4 text-amber-500" />
-                  </h4>
-                  <p className="text-xs text-slate-500 font-bold">
-                    {selectedUser.subscription_expires_at 
-                      ? `Access period valid through ${formatDateTime(selectedUser.subscription_expires_at)}` 
-                      : 'No explicit limits. Manage settings from operational limit overlay.'}
-                  </p>
-                  <p className="text-xs font-black uppercase tracking-wider text-slate-500 mt-2">
-                    Time Remaining: {' '}
-                    {(() => {
-                      const remaining = getSubscriptionTimeRemaining(selectedUser.subscription_expires_at);
-                      if (remaining.isExpired) {
-                        return <span className="text-rose-500 font-extrabold">{remaining.text}</span>;
-                      }
-                      if (remaining.isLow) {
-                        return <span className="text-amber-500 font-extrabold animate-pulse">{remaining.text}</span>;
-                      }
-                      return <span className="text-emerald-600 font-extrabold">{remaining.text}</span>;
-                    })()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Plan Management Form */}
-              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4">
-                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b border-slate-200/60 pb-2">
-                  <Key className="w-4 h-4 text-blue-600" />
-                  Manage Plan Permissions
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Subscription Tier</label>
-                    <select
-                      value={editPlanType}
-                      onChange={(e) => setEditPlanType(e.target.value)}
-                      className="w-full h-11 px-3 bg-white border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:border-blue-600 focus:outline-none cursor-pointer"
-                    >
-                      <option value="trial">Trial Plan (30 Days)</option>
-                      <option value="monthly">Professional (Monthly)</option>
-                      <option value="yearly">Professional (Yearly)</option>
-                      <option value="enterprise">Enterprise Plan</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Payment Status</label>
-                    <select
-                      value={editIsPaid ? 'true' : 'false'}
-                      onChange={(e) => setEditIsPaid(e.target.value === 'true')}
-                      className="w-full h-11 px-3 bg-white border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:border-blue-600 focus:outline-none cursor-pointer"
-                    >
-                      <option value="false">Unpaid / Inactive</option>
-                      <option value="true">Paid / Active</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    onClick={handleUpdateUserPlan}
-                    disabled={actionLoading}
-                    className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/10 hover:shadow-blue-600/20 active:scale-[0.98] transition-all flex items-center gap-2"
-                  >
-                    {actionLoading ? 'Saving...' : 'Save Plan Changes'}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsDetailsOpen(false)}
-                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Close analysis
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 2: Reset Password */}
-      {isResetOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-5">
-            <div>
-              <h3 className="text-lg font-black text-slate-900">Forced Credential Overwrite</h3>
-              <p className="text-slate-500 text-xs font-semibold mt-1">Assign a temporary security passkey for {selectedUser.email}</p>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest block">New Temporary Password</label>
-              <input
-                type="text"
-                placeholder="e.g. TempPass123!"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full h-11 px-4 bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold rounded-xl placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none"
-              />
-              <p className="text-[10px] text-slate-400 font-bold leading-relaxed">
-                Notice: Setting this will immediately modify their backend password credentials. Provide them this code to sign back in.
-              </p>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsResetOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Abort Action
-              </button>
-              <button
-                disabled={!newPassword || actionLoading}
-                onClick={handleResetPassword}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/10 hover:shadow-blue-600/20 transition-all"
-              >
-                {actionLoading ? 'Saving...' : 'Overwrite password'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 3: Extend Subscription */}
-      {isExtendOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-6">
-            <div>
-              <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                <Clock className="w-5 h-5 text-emerald-600 animate-spin-slow" />
-                Update Access Duration
-              </h3>
-              <p className="text-slate-500 text-xs font-semibold mt-1">Configure additional free operational access limits for {selectedUser.email}</p>
-            </div>
-
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Quick Presets</label>
-                <div className="grid grid-cols-5 gap-2">
-                  {[
-                    { label: '-30d', val: '-30', style: 'text-rose-600 bg-rose-50 hover:bg-rose-100 border-rose-100' },
-                    { label: '-7d', val: '-7', style: 'text-rose-500 bg-rose-50 hover:bg-rose-100 border-rose-100' },
-                    { label: '+7d', val: '7', style: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border-emerald-100' },
-                    { label: '+30d', val: '30', style: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border-emerald-100' },
-                    { label: '+365d', val: '365', style: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border-emerald-100' },
-                  ].map((preset, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setExtensionDays(preset.val)}
-                      className={`h-9 font-black text-[10px] rounded-xl border flex items-center justify-center transition-all ${
-                        extensionDays === preset.val
-                          ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
-                          : preset.style
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Custom Extension (Days)</label>
-                <input
-                  type="number"
-                  placeholder="Enter days..."
-                  value={extensionDays}
-                  onChange={(e) => setExtensionDays(e.target.value)}
-                  className="w-full h-11 px-4 bg-slate-50 border border-slate-200 text-slate-900 text-xs font-bold rounded-xl placeholder:text-slate-400 focus:border-blue-600 focus:bg-white focus:outline-none"
-                />
-              </div>
-
-              {/* Warning/indicator alert */}
-              <div className={`p-4 rounded-xl border text-[11px] font-bold leading-relaxed flex items-center gap-3 ${
-                parseInt(extensionDays) < 0 
-                  ? 'bg-rose-50 border-rose-100 text-rose-600' 
-                  : 'bg-emerald-50 border-emerald-100 text-emerald-600'
-              }`}>
-                <div className={`p-1.5 rounded-full shrink-0 ${
-                  parseInt(extensionDays) < 0 ? 'bg-rose-100' : 'bg-emerald-100'
-                }`}>
-                  <AlertTriangle className="w-3.5 h-3.5 animate-pulse" />
-                </div>
-                <p>
-                  This action will {parseInt(extensionDays) < 0 ? 'deduct' : 'extend'} the organization's subscription expires parameter by <span className="underline">{Math.abs(parseInt(extensionDays))} days</span>.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsExtendOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Abort Action
-              </button>
-              <button
-                disabled={!extensionDays || actionLoading}
-                onClick={handleExtendPlan}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/10 hover:shadow-blue-600/20 transition-all"
-              >
-                {actionLoading ? 'Updating...' : 'Commit access change'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 4: Confirm Suspension Block */}
-      {isBlockOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 shrink-0">
-                <AlertTriangle className="w-6 h-6 animate-bounce" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-black text-slate-900">
-                  {selectedUser.is_blocked ? 'Unblock' : 'Suspend'} Client Account?
-                </h3>
-                <p className="text-slate-500 text-xs font-semibold">
-                  {selectedUser.is_blocked 
-                    ? `Restoring dashboard access for ${selectedUser.company_name || 'this entity'}. They will be able to log back in immediately.` 
-                    : `Temporarily suspending workspace access for ${selectedUser.company_name || 'this entity'}. They will be logged out and cannot sign in until unblocked.`}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsBlockOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Cancel request
-              </button>
-              <button
-                disabled={actionLoading}
-                onClick={handleToggleBlock}
-                className={`px-5 py-2.5 text-white font-bold text-xs rounded-xl shadow-lg transition-all ${
-                  selectedUser.is_blocked 
-                    ? 'bg-emerald-600 hover:bg-emerald-750 shadow-emerald-600/10 hover:shadow-emerald-600/20' 
-                    : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/10 hover:shadow-rose-600/20'
-                }`}
-              >
-                {actionLoading ? 'Saving...' : selectedUser.is_blocked ? 'Restore Access' : 'Restrict Access'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 5: Purge Workspace Delete */}
-      {isDeleteOpen && selectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-rose-50 rounded-2xl border border-rose-100 text-rose-600 shrink-0">
-                <AlertTriangle className="w-6 h-6 animate-bounce" />
-              </div>
-              <div className="space-y-2">
-                <h3 className="text-base font-black text-slate-900">
-                  Purge User Profile Dataset?
-                </h3>
-                <p className="text-slate-500 text-xs font-semibold leading-relaxed">
-                  This will destroy all related ledger data (including parties, transaction rows, and settings) for <span className="text-slate-900 font-extrabold underline">{selectedUser.company_name || 'this entity'}</span>.
-                </p>
-                <div className="bg-amber-50 rounded-xl border border-amber-100 p-3 text-[10px] font-bold text-amber-700 leading-normal flex gap-2">
-                  <Info className="w-4 h-4 shrink-0 text-amber-600" />
-                  Note: The credential account remains inside Supabase Auth. To revoke core identity logins entirely, delete them from the Supabase admin panel.
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsDeleteOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Abort operation
-              </button>
-              <button
-                disabled={actionLoading}
-                onClick={handleDeleteUser}
-                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-600/10 hover:shadow-rose-600/20 active:scale-[0.98] transition-all"
-              >
-                {actionLoading ? 'Purging Workspace...' : 'Purge Data Permanently'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 6: Maintenance mode confirmation */}
-      {isMaintenanceOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-amber-50 rounded-2xl border border-amber-100 text-amber-600 shrink-0">
-                <AlertTriangle className="w-6 h-6 animate-pulse" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-black text-slate-900">Critical Operations Guard</h3>
-                <p className="text-slate-500 text-xs font-semibold leading-relaxed">
-                  {maintenanceMode 
-                    ? "Disabling maintenance mode will restore platform dashboard access for all entities immediately." 
-                    : "Enabling maintenance mode will completely lock the application for non-admin users. Proceed?"}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsMaintenanceOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Abort
-              </button>
-              <button
-                disabled={actionLoading}
-                onClick={() => {
-                  updateSystemSetting('maintenance_mode', !maintenanceMode);
-                  setIsMaintenanceOpen(false);
-                }}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl active:scale-[0.98] transition-all"
-              >
-                Confirm Guard Action
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 7: Signups gate confirmation */}
-      {isSignupsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-blue-50 rounded-2xl border border-blue-100 text-blue-600 shrink-0">
-                <ShieldCheck className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-base font-black text-slate-900">Authentication gate toggle</h3>
-                <p className="text-slate-500 text-xs font-semibold leading-relaxed">
-                  {publicSignups 
-                    ? "Disabling signups will prevent new user registrations until re-enabled." 
-                    : "New business profiles will be allowed to register on the platform. Proceed?"}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-200">
-              <button
-                onClick={() => setIsSignupsOpen(false)}
-                className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all shadow-sm"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={actionLoading}
-                onClick={() => {
-                  updateSystemSetting('public_signups', !publicSignups);
-                  setIsSignupsOpen(false);
-                }}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl active:scale-[0.98] transition-all shadow-lg shadow-blue-600/10 hover:shadow-blue-600/20"
-              >
-                Confirm Gateway Request
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <AdminModals
+        selectedUser={selectedUser}
+        actionLoading={actionLoading}
+        isDetailsOpen={isDetailsOpen}
+        setIsDetailsOpen={setIsDetailsOpen}
+        editPlanType={editPlanType}
+        setEditPlanType={setEditPlanType}
+        editIsPaid={editIsPaid}
+        setEditIsPaid={setEditIsPaid}
+        handleUpdateUserPlan={handleUpdateUserPlan}
+        isResetOpen={isResetOpen}
+        setIsResetOpen={setIsResetOpen}
+        newPassword={newPassword}
+        setNewPassword={setNewPassword}
+        handleResetPassword={handleResetPassword}
+        isExtendOpen={isExtendOpen}
+        setIsExtendOpen={setIsExtendOpen}
+        extensionDays={extensionDays}
+        setExtensionDays={setExtensionDays}
+        handleExtendPlan={handleExtendPlan}
+        isBlockOpen={isBlockOpen}
+        setIsBlockOpen={setIsBlockOpen}
+        handleToggleBlock={handleToggleBlock}
+        isDeleteOpen={isDeleteOpen}
+        setIsDeleteOpen={setIsDeleteOpen}
+        handleDeleteUser={handleDeleteUser}
+        isMaintenanceOpen={isMaintenanceOpen}
+        setIsMaintenanceOpen={setIsMaintenanceOpen}
+        maintenanceMode={maintenanceMode}
+        toggleMaintenanceSetting={() => {
+          updateSystemSetting('maintenance_mode', !maintenanceMode);
+          setIsMaintenanceOpen(false);
+        }}
+        isSignupsOpen={isSignupsOpen}
+        setIsSignupsOpen={setIsSignupsOpen}
+        publicSignups={publicSignups}
+        togglePublicSignupsSetting={() => {
+          updateSystemSetting('public_signups', !publicSignups);
+          setIsSignupsOpen(false);
+        }}
+      />
     </div>
   );
 };
-
-// Simple Sparkles decoration
-const Sparkles = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" fill="currentColor"/>
-  </svg>
-);
 
 export default AdminDashboard;

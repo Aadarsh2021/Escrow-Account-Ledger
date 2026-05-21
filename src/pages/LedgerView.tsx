@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Search, 
@@ -16,8 +16,6 @@ import {
   Trash2,
   CheckSquare,
   XCircle,
-  Save,
-  X,
   CheckCircle2,
   ChevronLeft,
   ChevronRight
@@ -26,229 +24,23 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { GlobalLoader } from '../components/ui/GlobalLoader';
 
-interface Party {
-  id: string;
-  party_name: string;
-  sr_no: string;
-  status: 'take' | 'give';
-  commission_rate: number;
-  monday_final: boolean;
-  system_type: 'normal' | 'commission' | 'company';
-}
+// Component Imports
+import { EditTransactionModal } from '../components/ledger/EditTransactionModal';
+import { ConfirmDialog } from '../components/ledger/ConfirmDialog';
+import { DcReportModal } from '../components/ledger/DcReportModal';
+import { LedgerPrintLayout } from '../components/ledger/LedgerPrintLayout';
 
-interface Transaction {
-  id: string;
-  transaction_date: string;
-  remarks: string;
-  tns_type: 'CR' | 'DR';
-  credit: number;
-  debit: number;
-  balance: number;
-  linked_transaction_id?: string;
-  partner_party_name?: string;
-  is_settlement?: boolean;
-  is_finalized?: boolean;
-  settlement_id?: string;
-}
+// Hook and Type Imports
+import { useLedgerTransactions, type Party } from '../hooks/useLedgerTransactions';
 
 const ITEMS_PER_PAGE = 20;
-
-const generateUUID = () => {
-  return typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
-      });
-};
-
-const CustomDatePicker = ({ 
-  label, 
-  value, 
-  onChange 
-}: { 
-  label: string; 
-  value: string; 
-  onChange: (val: string) => void; 
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  
-  // Parse initial value (YYYY-MM-DD)
-  const initialDate = value ? new Date(value) : new Date();
-  const [viewYear, setViewYear] = useState(initialDate.getFullYear());
-  const [viewMonth, setViewMonth] = useState(initialDate.getMonth());
-
-  useEffect(() => {
-    if (value) {
-      const d = new Date(value);
-      if (!isNaN(d.getTime())) {
-        setViewYear(d.getFullYear());
-        setViewMonth(d.getMonth());
-      }
-    }
-  }, [value]);
-
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleOutsideClick);
-    return () => document.removeEventListener('mousedown', handleOutsideClick);
-  }, []);
-
-  const formatDateDisplay = (dateStr: string) => {
-    if (!dateStr) return 'Select Date';
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'Select Date';
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
-
-  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-  const firstDayIndex = new Date(viewYear, viewMonth, 1).getDay();
-
-  const handlePrevMonth = () => {
-    if (viewMonth === 0) {
-      setViewMonth(11);
-      setViewYear(prev => prev - 1);
-    } else {
-      setViewMonth(prev => prev - 1);
-    }
-  };
-
-  const handleNextMonth = () => {
-    if (viewMonth === 11) {
-      setViewMonth(0);
-      setViewYear(prev => prev + 1);
-    } else {
-      setViewMonth(prev => prev - 1);
-    }
-  };
-
-  const handleDateClick = (day: number) => {
-    const mm = String(viewMonth + 1).padStart(2, '0');
-    const dd = String(day).padStart(2, '0');
-    onChange(`${viewYear}-${mm}-${dd}`);
-    setIsOpen(false);
-  };
-
-  const days = [];
-  // Empty slots for previous month's trailing days
-  for (let i = 0; i < firstDayIndex; i++) {
-    days.push(<div key={`empty-${i}`} className="w-8 h-8" />);
-  }
-  
-  // Current month's days
-  for (let d = 1; d <= daysInMonth; d++) {
-    const mm = String(viewMonth + 1).padStart(2, '0');
-    const dd = String(d).padStart(2, '0');
-    const dateStr = `${viewYear}-${mm}-${dd}`;
-    const isSelected = value === dateStr;
-    const isToday = new Date().toDateString() === new Date(viewYear, viewMonth, d).toDateString();
-
-    days.push(
-      <button
-        key={`day-${d}`}
-        type="button"
-        onClick={() => handleDateClick(d)}
-        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${
-          isSelected 
-            ? 'bg-blue-600 text-white shadow-md shadow-blue-200' 
-            : isToday 
-              ? 'border border-blue-600 text-blue-600 dark:text-blue-400' 
-              : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-        }`}
-      >
-        {d}
-      </button>
-    );
-  }
-
-  const MONTH_NAMES = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-
-  const YEARS = Array.from({ length: 21 }, (_, i) => 2015 + i); // 2015 to 2035
-
-  return (
-    <div className="relative w-full text-left" ref={dropdownRef}>
-      <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase">{label}</label>
-      <div 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between px-4 py-3 mt-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-xl outline-none focus:border-blue-600 font-bold cursor-pointer hover:border-slate-300 dark:hover:border-slate-700 transition-all"
-      >
-        <span>{formatDateDisplay(value)}</span>
-        <Calendar className="w-4 h-4 text-slate-400" />
-      </div>
-
-      {isOpen && (
-        <div className="absolute left-0 right-0 mt-2 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-[160] animate-in fade-in slide-in-from-top-2 duration-200">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4 gap-2">
-            <button 
-              type="button"
-              onClick={handlePrevMonth}
-              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            
-            <div className="flex gap-1.5 flex-1">
-              <select 
-                value={viewMonth} 
-                onChange={(e) => setViewMonth(parseInt(e.target.value))}
-                className="flex-1 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg py-1 px-1.5 text-xs font-black text-slate-800 dark:text-slate-200 outline-none"
-              >
-                {MONTH_NAMES.map((name, idx) => (
-                  <option key={name} value={idx}>{name}</option>
-                ))}
-              </select>
-
-              <select 
-                value={viewYear} 
-                onChange={(e) => setViewYear(parseInt(e.target.value))}
-                className="w-20 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg py-1 px-1.5 text-xs font-black text-slate-800 dark:text-slate-200 outline-none"
-              >
-                {YEARS.map(y => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
-              </select>
-            </div>
-
-            <button 
-              type="button"
-              onClick={handleNextMonth}
-              className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-
-          {/* Weekday Names */}
-          <div className="grid grid-cols-7 gap-1 text-center mb-2">
-            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(w => (
-              <span key={w} className="text-[10px] font-bold text-slate-400">{w}</span>
-            ))}
-          </div>
-
-          {/* Days Grid */}
-          <div className="grid grid-cols-7 gap-1 justify-items-center">
-            {days}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
 
 const LedgerView = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user: authUser } = useAuth();
+  
+  // Parties state and caching logic
   const [parties, setParties] = useState<Party[]>(() => {
     try {
       const cached = localStorage.getItem('cached_parties');
@@ -267,103 +59,25 @@ const LedgerView = () => {
     }
   });
   
-  const [submitting, setSubmitting] = useState(false);
+  // Local active ledger navigation states
   const [selectedParty, setSelectedParty] = useState<Party | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [closingBalance, setClosingBalance] = useState(0);
-  const [printTransactions, setPrintTransactions] = useState<Transaction[]>([]);
-
   const [isOldRecordsView, setIsOldRecordsView] = useState(false);
-  const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
-  const [selectedTnsIds, setSelectedTnsIds] = useState<Set<string>>(new Set());
-  
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [confirmDialog, setConfirmDialog] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    type: 'danger' | 'warning' | 'success';
-    onConfirm: () => void;
-  }>({ isOpen: false, title: '', message: '', type: 'warning', onConfirm: () => {} });
-  const [editFormData, setEditFormData] = useState<{
-    remarks: string;
-    amount: string;
-    linkedParty: Party | null;
-    linkedSearch: string;
-  }>({ remarks: '', amount: '', linkedParty: null, linkedSearch: '' });
-  const [isEditLinkedSearchOpen, setIsEditLinkedSearchOpen] = useState(false);
-  const [editHighlightedIndex, setEditHighlightedIndex] = useState(0);
-  const editLinkedSearchRef = useRef<HTMLInputElement>(null);
-  const editDropdownRef = useRef<HTMLDivElement>(null);
-
-  // DC Report State
-  const [isDcModalOpen, setIsDcModalOpen] = useState(false);
-  const [dcFromDate, setDcFromDate] = useState('');
-  const [dcToDate, setDcToDate] = useState('');
-  const [isDcLoading, setIsDcLoading] = useState(false);
-  const [dcReportData, setDcReportData] = useState<{ credit: number, debit: number, balance: number } | null>(null);
-
-  const fetchDcReport = async () => {
-    if (!selectedParty || !dcFromDate || !dcToDate) return;
-    setIsDcLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('credit, debit, tns_type')
-        .eq('party_id', selectedParty.id)
-        .gte('transaction_date', `${dcFromDate}T00:00:00.000Z`)
-        .lte('transaction_date', `${dcToDate}T23:59:59.999Z`);
-        
-      if (error) throw error;
-      
-      let totalCredit = 0;
-      let totalDebit = 0;
-      
-      if (data) {
-        data.forEach(t => {
-          totalCredit += Number(t.credit);
-          totalDebit += Number(t.debit);
-        });
-      }
-      
-      setDcReportData({
-        credit: totalCredit,
-        debit: totalDebit,
-        balance: totalCredit - totalDebit
-      });
-    } catch (err) {
-      console.error('Error fetching DC report:', err);
-      alert('Failed to fetch DC report');
-    } finally {
-      setIsDcLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!isDcModalOpen) {
-      setDcReportData(null);
-      setDcFromDate('');
-      setDcToDate('');
-    }
-  }, [isDcModalOpen]);
-
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // Entry Form inputs
   const [amount, setAmount] = useState('');
-  const getAmountColorClass = () => {
-    if (!amount) return 'text-blue-600';
-    const val = parseFloat(amount);
-    if (isNaN(val) || val === 0) return 'text-blue-600';
-    return val > 0 ? 'text-emerald-600' : 'text-rose-600';
-  };
   const [remarks, setRemarks] = useState('');
   const [linkedParty, setLinkedParty] = useState<Party | null>(null);
   const [linkedSearch, setLinkedSearch] = useState('');
+  
+  // Autocomplete search states
   const [isLinkedSearchOpen, setIsLinkedSearchOpen] = useState(false);
   const [isHeaderSearchOpen, setIsHeaderSearchOpen] = useState(false);
   const [headerSearch, setHeaderSearch] = useState('');
   const [highlightedIndex, setHighlightedIndex] = useState(0);
 
+  // Focus and layout refs
   const searchInputRef = useRef<HTMLInputElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
   const linkedSearchRef = useRef<HTMLInputElement>(null);
@@ -372,6 +86,82 @@ const LedgerView = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const headerDropdownRef = useRef<HTMLDivElement>(null);
 
+  // confirmation dialog state passing
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'danger' | 'warning' | 'success';
+    onConfirm: () => void;
+  }>({ isOpen: false, title: '', message: '', type: 'warning', onConfirm: () => {} });
+
+  // DB Sync logic
+  const fetchParties = async () => {
+    try {
+      const { data, error } = await supabase.from('parties').select('*').order('party_name', { ascending: true });
+      if (error) throw error;
+      const cleanData = (data || []) as Party[];
+      setParties(cleanData);
+      try {
+        localStorage.setItem('cached_parties', JSON.stringify(cleanData));
+      } catch (e) {
+        console.error('Error caching parties in Ledger:', e);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Custom ledger transaction operation hook
+  const {
+    transactions,
+    printTransactions,
+    closingBalance,
+    selectedTnsIds,
+    setSelectedTnsIds,
+    selectedPartyIds,
+    setSelectedPartyIds,
+    submitting,
+    isDcModalOpen,
+    setIsDcModalOpen,
+    dcFromDate,
+    setDcFromDate,
+    dcToDate,
+    setDcToDate,
+    isDcLoading,
+    dcReportData,
+    setDcReportData,
+    fetchDcReport,
+    isEditModalOpen,
+    setIsEditModalOpen,
+    isEditLinkedSearchOpen,
+    setIsEditLinkedSearchOpen,
+    editHighlightedIndex,
+    setEditHighlightedIndex,
+    editFormData,
+    setEditFormData,
+    fetchTransactions,
+    fetchAllTransactionsForPrint,
+    handleMondayFinal,
+    handleBulkMondayFinal,
+    handleDeleteTns,
+    saveModification,
+    handleModifyTns,
+    selectEditLinkedParty,
+    calculateCommission,
+    createTransactionEntry
+  } = useLedgerTransactions({
+    selectedParty,
+    authUser,
+    parties,
+    fetchParties,
+    isOldRecordsView,
+    setConfirmDialog
+  });
+
+  // Load parties list and click outside listeners on mount
   useEffect(() => {
     fetchParties();
     
@@ -382,9 +172,12 @@ const LedgerView = () => {
       .subscribe();
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) setIsLinkedSearchOpen(false);
-      if (editDropdownRef.current && !editDropdownRef.current.contains(event.target as Node)) setIsEditLinkedSearchOpen(false);
-      if (headerDropdownRef.current && !headerDropdownRef.current.contains(event.target as Node)) setIsHeaderSearchOpen(false);
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsLinkedSearchOpen(false);
+      }
+      if (headerDropdownRef.current && !headerDropdownRef.current.contains(event.target as Node)) {
+        setIsHeaderSearchOpen(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     
@@ -394,7 +187,7 @@ const LedgerView = () => {
     };
   }, []);
 
-  // Keep selectedParty in sync with real-time party updates
+  // Sync selectedParty with URL and fetch transactions
   useEffect(() => {
     if (selectedParty && parties.length > 0) {
       const updatedParty = parties.find(p => p.id === selectedParty.id);
@@ -402,9 +195,8 @@ const LedgerView = () => {
         setSelectedParty(updatedParty);
       }
     }
-  }, [parties, selectedParty]);
+  }, [parties, selectedParty, setSelectedParty]);
 
-  // Load party from URL query parameter on init or when parties list is loaded, or on browser back/forward
   useEffect(() => {
     const urlPartyId = searchParams.get('partyId');
     if (urlPartyId) {
@@ -412,19 +204,16 @@ const LedgerView = () => {
         const foundParty = parties.find(p => p.id === urlPartyId);
         if (foundParty) {
           if (!selectedParty || selectedParty.id !== foundParty.id) {
-            // Use setTimeout to avoid synchronous state update warnings during render/mount phase
             setTimeout(() => {
               handlePartySelect(foundParty);
             }, 0);
           }
         } else {
-          // Party in URL is not found, clear search param
           setSearchParams({});
         }
       }
     } else {
       if (selectedParty) {
-        // If URL has no partyId but we have a selectedParty (e.g. browser back button pressed), clear the state
         setSelectedParty(null);
         setSelectedTnsIds(new Set());
         setSearchQuery('');
@@ -444,286 +233,22 @@ const LedgerView = () => {
       fetchTransactions(selectedParty.id);
       fetchAllTransactionsForPrint(selectedParty.id);
       
-      // Directly focus 'Transfer To' (Search Party...) input when party is opened
       setTimeout(() => {
         linkedSearchRef.current?.focus();
       }, 50);
 
-      const channel = supabase.channel(`ledger-${selectedParty.id}`).on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => {
-        fetchTransactions(selectedParty.id);
-        fetchAllTransactionsForPrint(selectedParty.id);
-      }).subscribe();
-      return () => { supabase.removeChannel(channel); };
+      const channel = supabase.channel(`ledger-${selectedParty.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => {
+          fetchTransactions(selectedParty.id);
+          fetchAllTransactionsForPrint(selectedParty.id);
+        })
+        .subscribe();
+      
+      return () => { 
+        supabase.removeChannel(channel); 
+      };
     }
   }, [selectedParty]);
-
-  const fetchParties = async () => {
-    try {
-      const { data, error } = await supabase.from('parties').select('*').order('party_name', { ascending: true });
-      if (error) throw error;
-      const cleanData = data || [];
-      setParties(cleanData);
-      try {
-        localStorage.setItem('cached_parties', JSON.stringify(cleanData));
-      } catch (e) {
-        console.error('Error caching parties in Ledger:', e);
-      }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
-  };
-
-  const fetchTransactions = async (partyId: string, showArchived: boolean = false) => {
-    try {
-      const { data: tnsData, error: tnsError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('party_id', partyId)
-        .filter('is_finalized', showArchived ? 'eq' : 'neq', true) // If not archived, show anything NOT true (false or null)
-        .order('transaction_date', { ascending: true });
-        
-      if (tnsError) throw tnsError;
-      
-      const currentTns = tnsData || [];
-      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
-      if (linkedIds.length > 0) {
-        const { data: partnerData } = await supabase
-          .from('transactions')
-          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
-          .in('linked_transaction_id', linkedIds)
-          .neq('party_id', partyId);
-        
-        if (partnerData) {
-          const partnerMap = new Map<string, string>();
-          partnerData.forEach((p: any) => {
-            if (p.parties?.system_type !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
-              partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
-            }
-          });
-          
-          currentTns.forEach(t => {
-            if (t.linked_transaction_id) {
-              t.partner_party_name = partnerMap.get(t.linked_transaction_id);
-            }
-          });
-        }
-      }
-
-      setTransactions(currentTns);
-      // We only update closing balance if we are viewing active records
-      if (!showArchived) {
-        setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
-      }
-    } catch (err) { console.error(err); }
-  };
-
-  const fetchAllTransactionsForPrint = async (partyId: string) => {
-    try {
-      const { data: tnsData, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('party_id', partyId)
-        .order('transaction_date', { ascending: true })
-        .order('created_at', { ascending: true });
-        
-      if (error) throw error;
-      
-      const currentTns = tnsData || [];
-      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
-      if (linkedIds.length > 0) {
-        const { data: partnerData } = await supabase
-          .from('transactions')
-          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
-          .in('linked_transaction_id', linkedIds)
-          .neq('party_id', partyId);
-        
-        if (partnerData) {
-          const partnerMap = new Map<string, string>();
-          partnerData.forEach((p: any) => {
-            if (p.parties?.system_type !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
-              partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
-            }
-          });
-          
-          currentTns.forEach(t => {
-            if (t.linked_transaction_id) {
-              t.partner_party_name = partnerMap.get(t.linked_transaction_id);
-            }
-          });
-        }
-      }
-      setPrintTransactions(currentTns);
-    } catch (err) {
-      console.error('Error fetching all transactions for print:', err);
-    }
-  };
-
-  const recalculateBalances = async (partyId: string) => {
-    try {
-      const { data: activeTns, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('party_id', partyId)
-        .neq('is_finalized', true)
-        .order('transaction_date', { ascending: true })
-        .order('created_at', { ascending: true });
-
-      if (error) throw error;
-      if (!activeTns || activeTns.length === 0) return;
-
-      let runningBalance = 0;
-      const updates = [];
-
-      for (let i = 0; i < activeTns.length; i++) {
-        const t = activeTns[i];
-        if (t.is_settlement) {
-          runningBalance = t.balance;
-        } else {
-          runningBalance = runningBalance + t.credit - t.debit;
-          if (t.balance !== runningBalance) {
-            updates.push({ id: t.id, balance: runningBalance });
-          }
-        }
-      }
-
-      if (updates.length > 0) {
-        for (const update of updates) {
-          await supabase
-            .from('transactions')
-            .update({ balance: update.balance })
-            .eq('id', update.id);
-        }
-      }
-    } catch (err) {
-      console.error('Error recalculating balances:', err);
-    }
-  };
-
-  const handleMondayFinal = async () => {
-    if (!selectedParty || submitting) return;
-    
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Monday Final Settlement',
-      message: `Are you sure you want to finalize ${selectedParty.party_name}'s account? This will settle all active entries into a single summary record and archive the history.`,
-      type: 'success',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        setSubmitting(true);
-        try {
-          // 1. Fetch FRESH active transactions to ensure we have the absolute latest
-          const { data: latestTns, error: fErr } = await supabase
-            .from('transactions')
-            .select('*')
-            .eq('party_id', selectedParty.id)
-            .neq('is_finalized', true)
-            .order('transaction_date', { ascending: true });
-
-          if (fErr) throw fErr;
-          if (!latestTns || latestTns.length === 0) {
-            // Update the party directly to monday_final: true when there are no transactions
-            const { error: updateErr } = await supabase
-              .from('parties')
-              .update({ monday_final: true })
-              .eq('id', selectedParty.id);
-
-            if (updateErr) throw updateErr;
-
-            fetchParties();
-            setTimeout(() => {
-              fetchTransactions(selectedParty.id);
-              fetchAllTransactionsForPrint(selectedParty.id);
-            }, 500);
-            return;
-          }
-
-          const closingBal = latestTns[latestTns.length - 1].balance;
-
-          // Call the bulletproof server-side function
-          const { error: rpcError } = await supabase.rpc('execute_monday_final', {
-            p_party_id: selectedParty.id,
-            p_user_id: authUser?.id || null,
-            p_closing_balance: closingBal,
-            p_remarks: 'MONDAY FINAL SETTLEMENT'
-          });
-
-          if (rpcError) throw rpcError;
-
-          // Refresh the ledger and the party list
-          fetchParties();
-          setTimeout(() => {
-            fetchTransactions(selectedParty.id);
-            fetchAllTransactionsForPrint(selectedParty.id);
-          }, 500);
-        } catch (err) {
-          console.error('Monday Final Error:', err);
-          alert('Failed to finalize: ' + (err as any).message);
-        } finally {
-          setSubmitting(false);
-        }
-      }
-    });
-  };
-
-  const handleBulkMondayFinal = async () => {
-    if (selectedPartyIds.size === 0 || submitting) return;
-    
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Bulk Monday Final',
-      message: `Are you sure you want to finalize ${selectedPartyIds.size} selected accounts? This action will settle and archive active transactions for all selected parties.`,
-      type: 'success',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        setSubmitting(true);
-        try {
-          const partyIds = Array.from(selectedPartyIds);
-          
-          for (const pId of partyIds) {
-            const { data: activeTns } = await supabase
-              .from('transactions')
-              .select('*')
-              .eq('party_id', pId)
-              .neq('is_finalized', true)
-              .order('transaction_date', { ascending: true });
-
-            if (activeTns && activeTns.length > 0) {
-              const closingBal = activeTns[activeTns.length - 1].balance;
-
-              const { error: rpcError } = await supabase.rpc('execute_monday_final', {
-                p_party_id: pId,
-                p_user_id: authUser?.id || null,
-                p_closing_balance: closingBal,
-                p_remarks: 'MONDAY FINAL SETTLEMENT (BULK)'
-              });
-              
-              if (rpcError) throw rpcError;
-            } else {
-              // Update the party directly to monday_final: true when there are no transactions
-              const { error: updateErr } = await supabase
-                .from('parties')
-                .update({ monday_final: true })
-                .eq('id', pId);
-
-              if (updateErr) throw updateErr;
-            }
-          }
-          
-          setSelectedPartyIds(new Set());
-          fetchParties();
-        } catch (err) {
-          console.error('Bulk Monday Final Error:', err);
-          alert('Failed to complete bulk settlement.');
-        } finally {
-          setSubmitting(false);
-        }
-      }
-    });
-  };
-
-  const getBalance = async (partyId: string) => {
-    const { data } = await supabase.from('transactions').select('balance').eq('party_id', partyId).order('transaction_date', { ascending: false }).limit(1);
-    return data?.[0]?.balance || 0;
-  };
-
 
   const handlePartySelect = (party: Party) => {
     setSearchParams({ partyId: party.id });
@@ -756,15 +281,21 @@ const LedgerView = () => {
   const togglePartySelection = (partyId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const newSelected = new Set(selectedPartyIds);
-    if (newSelected.has(partyId)) newSelected.delete(partyId);
-    else newSelected.add(partyId);
+    if (newSelected.has(partyId)) {
+      newSelected.delete(partyId);
+    } else {
+      newSelected.add(partyId);
+    }
     setSelectedPartyIds(newSelected);
   };
 
   const toggleTnsSelection = (tnsId: string) => {
     const newSelected = new Set(selectedTnsIds);
-    if (newSelected.has(tnsId)) newSelected.delete(tnsId);
-    else newSelected.add(tnsId);
+    if (newSelected.has(tnsId)) {
+      newSelected.delete(tnsId);
+    } else {
+      newSelected.add(tnsId);
+    }
     setSelectedTnsIds(newSelected);
   };
 
@@ -788,311 +319,52 @@ const LedgerView = () => {
     }
   };
 
-  const handleDeleteTns = async () => {
-    if (selectedTnsIds.size === 0 || !selectedParty || submitting || isOldRecordsView) return;
-
-    const hasSettlement = Array.from(selectedTnsIds).some(id => {
-      const t = transactions.find(item => item.id === id);
-      return t?.is_settlement === true;
-    });
-
-    if (hasSettlement) {
-      alert('Monday Final settlement records cannot be deleted once created.');
-      return;
+  const handleSelectLinkedParty = async (party: Party) => {
+    setLinkedParty(party);
+    setLinkedSearch(party.party_name);
+    setIsLinkedSearchOpen(false);
+    
+    if (party.system_type === 'commission' && selectedParty) {
+      const result = await calculateCommission();
+      setAmount(result.amount);
+      setRemarks(result.remarks);
     }
-
-    setConfirmDialog({
-      isOpen: true,
-      title: 'Delete Transactions',
-      message: `Are you sure you want to delete ${selectedTnsIds.size} selected transactions? This action cannot be undone.`,
-      type: 'danger',
-      onConfirm: async () => {
-        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
-        setSubmitting(true);
-        try {
-          const selectedEntries = transactions.filter(t => selectedTnsIds.has(t.id));
-          const allAnchorIds = new Set<string>();
-          selectedEntries?.forEach(e => { allAnchorIds.add(e.linked_transaction_id || e.id); });
-          
-          // Get all affected party IDs before deletion
-          const { data: tnsToDelete } = await supabase
-            .from('transactions')
-            .select('party_id')
-            .or(`id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')}),linked_transaction_id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')})`);
-          
-          const affectedPartyIds = new Set<string>([selectedParty.id, ...(tnsToDelete?.map(t => t.party_id) || [])]);
-
-          // Delete both the anchor transactions and any transactions linked to them to prevent foreign key violations
-          const { error } = await supabase
-            .from('transactions')
-            .delete()
-            .or(`id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')}),linked_transaction_id.in.(${Array.from(allAnchorIds).map(id => `"${id}"`).join(',')})`);
-            
-          if (error) throw error;
-
-          // Recalculate balances for all affected parties
-          for (const pId of affectedPartyIds) {
-            await recalculateBalances(pId);
-          }
-
-          setSelectedTnsIds(new Set());
-          fetchParties(); // Instantly refresh party status (Yes -> No)
-          if (selectedParty) fetchTransactions(selectedParty.id);
-        } catch (err) { 
-          console.error(err); 
-          alert("Failed to delete records. " + (err as any).message);
-        } finally { 
-          setSubmitting(false); 
-        }
-      }
-    });
+    amountInputRef.current?.focus();
   };
 
-  const handleModifyTns = async () => {
-    if (selectedTnsIds.size !== 1 || isOldRecordsView || !selectedParty) return;
-    const tnsId = Array.from(selectedTnsIds)[0];
-    const tnsA = transactions.find(t => t.id === tnsId);
-    if (!tnsA) return;
-
-    if (tnsA.is_settlement) {
-      alert('Monday Final settlement records cannot be modified once created.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const anchorId = tnsA.linked_transaction_id || tnsA.id;
-      // Fetch all transactions in the group to identify partner
-      const { data: pair, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('linked_transaction_id', anchorId);
-
-      if (error) throw error;
-
-      const pairPartyIds = pair?.map(t => t.party_id) || [];
-      const { data: pairParties } = await supabase
-        .from('parties')
-        .select('*')
-        .in('id', pairPartyIds);
-
-      const companyPartyObj = pairParties?.find(p => p.system_type === 'company');
-      const commissionPartyObj = pairParties?.find(p => p.system_type === 'commission');
-      const partnerPartyObj = pairParties?.find(p => p.id !== selectedParty.id && p.system_type !== 'commission');
-
-      let initialLinkedParty: Party | null = null;
-      let initialAmountVal = 0;
-
-      if (companyPartyObj && commissionPartyObj) {
-        // It's a 3-way split!
-        initialLinkedParty = companyPartyObj as Party;
-        const compTns = pair?.find(t => t.party_id === companyPartyObj.id);
-        // The full amount is the debit of the company party
-        initialAmountVal = compTns ? (compTns.debit > 0 ? compTns.debit : -compTns.credit) : 0;
-      } else {
-        // It's a normal 2-way transaction
-        if (partnerPartyObj) {
-          initialLinkedParty = partnerPartyObj as Party;
-        }
-        initialAmountVal = tnsA.credit > 0 ? tnsA.credit : -tnsA.debit;
-      }
-
-      setEditFormData({
-        remarks: tnsA.remarks || '',
-        amount: initialAmountVal.toString(),
-        linkedParty: initialLinkedParty,
-        linkedSearch: initialLinkedParty ? initialLinkedParty.party_name : ''
-      });
-      setIsEditModalOpen(true);
-    } catch (err) {
-      console.error(err);
-      alert('Failed to load transaction details.');
-    } finally {
-      setSubmitting(false);
+  const handleSubmitEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedParty || !amount || parseFloat(amount) === 0 || !linkedParty) return;
+    
+    const success = await createTransactionEntry(amount, remarks, linkedParty);
+    if (success) {
+      setAmount('');
+      setRemarks('');
+      setLinkedParty(null);
+      setLinkedSearch('');
+      linkedSearchRef.current?.focus();
     }
   };
 
-  const saveModification = async () => {
-    if (selectedTnsIds.size !== 1 || !selectedParty || !editFormData.linkedParty || !authUser) return;
-    const tnsId = Array.from(selectedTnsIds)[0];
-    const tnsA = transactions.find(t => t.id === tnsId);
-    if (!tnsA) return;
-
-    const numAmt = parseFloat(editFormData.amount);
-    if (isNaN(numAmt) || numAmt === 0) {
-      alert('Please enter a valid amount.');
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const anchorId = tnsA.linked_transaction_id || tnsA.id;
-
-      // Get all affected party IDs before modification
-      const { data: tnsToModify } = await supabase
-        .from('transactions')
-        .select('party_id')
-        .eq('linked_transaction_id', anchorId);
-      
-      const affectedPartyIds = new Set<string>([
-        selectedParty.id,
-        editFormData.linkedParty.id,
-        ...(tnsToModify?.map(t => t.party_id) || [])
-      ]);
-
-      const absAmt = Math.abs(numAmt);
-      const primaryType = numAmt > 0 ? 'CR' : 'DR';
-      const secondaryType = numAmt > 0 ? 'DR' : 'CR';
-
-      const isNewThreeWay = false;
-
-      // First delete all existing transactions under this linked_transaction_id
-      const { error: delError } = await supabase
-        .from('transactions')
-        .delete()
-        .eq('linked_transaction_id', anchorId);
-      
-      if (delError) throw delError;
-
-      if (isNewThreeWay) {
-        // Calculate commission (1%)
-        const commissionAmt = parseFloat((absAmt * 0.01).toFixed(2));
-
-        // Find or fetch the commission party
-        const { data: commParties } = await supabase
-          .from('parties')
-          .select('*')
-          .eq('system_type', 'commission')
-          .limit(1);
-
-        const commissionParty = commParties?.[0];
-        if (!commissionParty) throw new Error("Commission account not found in database.");
-
-        affectedPartyIds.add(commissionParty.id);
-
-        const [balActive, balCompany, balComm] = await Promise.all([
-          getBalance(selectedParty.id),
-          getBalance(editFormData.linkedParty.id),
-          getBalance(commissionParty.id)
-        ]);
-
-        const firstPartyCredit = primaryType === 'CR' ? absAmt : 0;
-        const firstPartyDebit = primaryType === 'DR' ? absAmt : 0;
-        const newBalActive = balActive + firstPartyCredit - firstPartyDebit;
-
-        const companyCredit = secondaryType === 'CR' ? absAmt : 0;
-        const companyDebit = secondaryType === 'DR' ? absAmt : 0;
-        const newBalCompany = balCompany + companyCredit - companyDebit;
-
-        const commCredit = primaryType === 'CR' ? commissionAmt : 0;
-        const commDebit = primaryType === 'DR' ? commissionAmt : 0;
-        const newBalComm = balComm + commCredit - commDebit;
-
-        const { error: insertErr } = await supabase.from('transactions').insert([
-          {
-            id: anchorId,
-            user_id: authUser.id,
-            party_id: selectedParty.id,
-            linked_transaction_id: anchorId,
-            remarks: editFormData.remarks || '',
-            tns_type: primaryType,
-            credit: firstPartyCredit,
-            debit: firstPartyDebit,
-            balance: newBalActive
-          },
-          {
-            id: generateUUID(),
-            user_id: authUser.id,
-            party_id: editFormData.linkedParty.id,
-            linked_transaction_id: anchorId,
-            remarks: editFormData.remarks || '',
-            tns_type: secondaryType,
-            credit: companyCredit,
-            debit: companyDebit,
-            balance: newBalCompany
-          },
-          {
-            id: generateUUID(),
-            user_id: authUser.id,
-            party_id: commissionParty.id,
-            linked_transaction_id: anchorId,
-            remarks: `1% Commission from ${selectedParty.party_name}`,
-            tns_type: primaryType,
-            credit: commCredit,
-            debit: commDebit,
-            balance: newBalComm
-          }
-        ]);
-
-        if (insertErr) throw insertErr;
-
-      } else {
-        // Normal 2-way transaction
-        const [balA, balB] = await Promise.all([
-          getBalance(selectedParty.id),
-          getBalance(editFormData.linkedParty.id)
-        ]);
-
-        const creditA = primaryType === 'CR' ? absAmt : 0;
-        const debitA = primaryType === 'DR' ? absAmt : 0;
-        const newBalA = balA + creditA - debitA;
-
-        const creditB = secondaryType === 'CR' ? absAmt : 0;
-        const debitB = secondaryType === 'DR' ? absAmt : 0;
-        const newBalB = balB + creditB - debitB;
-
-        const { error: insertErr } = await supabase.from('transactions').insert([
-          {
-            id: anchorId,
-            user_id: authUser.id,
-            party_id: selectedParty.id,
-            linked_transaction_id: anchorId,
-            remarks: editFormData.remarks || '',
-            tns_type: primaryType,
-            credit: creditA,
-            debit: debitA,
-            balance: newBalA
-          },
-          {
-            id: generateUUID(),
-            user_id: authUser.id,
-            party_id: editFormData.linkedParty.id,
-            linked_transaction_id: anchorId,
-            remarks: editFormData.remarks || '',
-            tns_type: secondaryType,
-            credit: creditB,
-            debit: debitB,
-            balance: newBalB
-          }
-        ]);
-
-        if (insertErr) throw insertErr;
-      }
-
-      // Recalculate balances for all affected parties
-      for (const pId of affectedPartyIds) {
-        await recalculateBalances(pId);
-      }
-
-      setIsEditModalOpen(false);
-      setSelectedTnsIds(new Set());
-      await fetchTransactions(selectedParty.id);
-    } catch (err) {
-      console.error(err);
-      alert("Error updating transaction: " + (err as any).message);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const filteredParties = parties.filter(p => p.party_name.toLowerCase().includes(searchQuery.toLowerCase()) || p.sr_no.toLowerCase().includes(searchQuery.toLowerCase()));
+  // Searching and Pagination Computations
+  const filteredParties = parties.filter(p => 
+    p.party_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    p.sr_no.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
   const totalPages = Math.ceil(filteredParties.length / ITEMS_PER_PAGE);
   const paginatedParties = filteredParties.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const filteredLinkedParties = parties.filter(p => p.id !== selectedParty?.id && (p.party_name.toLowerCase().includes(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(linkedSearch.toLowerCase())));
-  const filteredHeaderParties = parties.filter(p => p.id !== selectedParty?.id && (p.party_name.toLowerCase().includes(headerSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(headerSearch.toLowerCase())));
+  const filteredLinkedParties = parties.filter(p => 
+    p.id !== selectedParty?.id && 
+    (p.party_name.toLowerCase().includes(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(linkedSearch.toLowerCase()))
+  );
+  
+  const filteredHeaderParties = parties.filter(p => 
+    p.id !== selectedParty?.id && 
+    (p.party_name.toLowerCase().includes(headerSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(headerSearch.toLowerCase()))
+  );
 
-  // Find first case-insensitive start-matching party for inline ghost autocomplete
   const firstSearchMatch = searchQuery
     ? parties.find(p => p.party_name.toLowerCase().startsWith(searchQuery.toLowerCase()) || p.sr_no.toLowerCase().startsWith(searchQuery.toLowerCase()))
     : null;
@@ -1105,291 +377,20 @@ const LedgerView = () => {
     ? filteredLinkedParties.find(p => p.party_name.toLowerCase().startsWith(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(linkedSearch.toLowerCase()))
     : null;
 
-  const selectLinkedParty = async (party: Party) => {
-    setLinkedParty(party);
-    setLinkedSearch(party.party_name);
-    setIsLinkedSearchOpen(false);
-    if (party.system_type === 'commission' && selectedParty) {
-      const isTake = selectedParty.status === 'take';
-      
-      // Find the last commission transaction index in the active list
-      const lastCommIdx = [...transactions].reverse().findIndex(t => t.remarks?.toUpperCase() === 'COMMISSION');
-      
-      // Only calculate commission on transactions after the last commission transaction
-      const uncommissionedTns = lastCommIdx === -1 
-        ? transactions 
-        : transactions.slice(transactions.length - lastCommIdx);
-      
-      // Filter out settlement and commission records
-      const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
-      
-      let totalVolume = 0;
-      if (isTake) {
-        const lastDebitIdx = [...mainTns].reverse().findIndex(t => t.debit > 0);
-        const uncommissionedCredits = lastDebitIdx === -1 
-          ? mainTns 
-          : mainTns.slice(mainTns.length - lastDebitIdx);
-        totalVolume = uncommissionedCredits.reduce((sum, t) => sum + t.credit, 0);
-      } else {
-        const companyParty = parties.find(p => p.system_type === 'company');
-        if (companyParty) {
-          const companyTns = mainTns.filter(t => t.partner_party_name === companyParty.party_name);
-          const companyTnsIds = companyTns.map(ct => ct.linked_transaction_id).filter(Boolean) as string[];
-          
-          if (companyTnsIds.length > 0) {
-            const { data: companySideTns } = await supabase
-              .from('transactions')
-              .select('linked_transaction_id, is_finalized')
-              .eq('party_id', companyParty.id)
-              .in('linked_transaction_id', companyTnsIds);
-            
-            const companyFinalizedMap = new Map<string, boolean>();
-            companySideTns?.forEach(ct => {
-              if (ct.linked_transaction_id) {
-                companyFinalizedMap.set(ct.linked_transaction_id, ct.is_finalized || false);
-              }
-            });
-            
-            const activeCompanyTns = companyTns.filter(t => !t.linked_transaction_id || !companyFinalizedMap.get(t.linked_transaction_id));
-            totalVolume = activeCompanyTns.reduce((sum, t) => sum + t.credit, 0);
-          } else {
-            totalVolume = 0;
-          }
-        } else {
-          totalVolume = 0;
-        }
-      }
-      
-      const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
-      
-      const amountSign = isTake ? '-' : '';
-      setAmount(`${amountSign}${calculatedComm.toFixed(2)}`);
-      setRemarks('COMMISSION');
-    }
-    amountInputRef.current?.focus();
-  };
-
-  const getEditAmountColorClass = () => {
-    if (!editFormData.amount) return 'text-blue-600';
-    const val = parseFloat(editFormData.amount);
-    if (isNaN(val) || val === 0) return 'text-blue-600';
-    return val > 0 ? 'text-emerald-600' : 'text-rose-600';
-  };
-
-  const filteredEditLinkedParties = parties.filter(p => p.id !== selectedParty?.id && (p.party_name.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(editFormData.linkedSearch.toLowerCase())));
+  const filteredEditLinkedParties = parties.filter(p => 
+    p.id !== selectedParty?.id && 
+    (p.party_name.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()))
+  );
 
   const firstEditLinkedMatch = editFormData.linkedSearch
      ? filteredEditLinkedParties.find(p => p.party_name.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()))
      : null;
 
-  const selectEditLinkedParty = async (party: Party) => {
-    setEditFormData(prev => ({
-      ...prev,
-      linkedParty: party,
-      linkedSearch: party.party_name
-    }));
-    setIsEditLinkedSearchOpen(false);
-    if (party.system_type === 'commission' && selectedParty) {
-      const isTake = selectedParty.status === 'take';
-      const lastCommIdx = [...transactions].reverse().findIndex(t => t.remarks?.toUpperCase() === 'COMMISSION');
-      const uncommissionedTns = lastCommIdx === -1 
-        ? transactions 
-        : transactions.slice(transactions.length - lastCommIdx);
-      const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
-      
-      let totalVolume = 0;
-      if (isTake) {
-        const lastDebitIdx = [...mainTns].reverse().findIndex(t => t.debit > 0);
-        const uncommissionedCredits = lastDebitIdx === -1 
-          ? mainTns 
-          : mainTns.slice(mainTns.length - lastDebitIdx);
-        totalVolume = uncommissionedCredits.reduce((sum, t) => sum + t.credit, 0);
-      } else {
-        const companyParty = parties.find(p => p.system_type === 'company');
-        if (companyParty) {
-          const companyTns = mainTns.filter(t => t.partner_party_name === companyParty.party_name);
-          const companyTnsIds = companyTns.map(ct => ct.linked_transaction_id).filter(Boolean) as string[];
-          
-          if (companyTnsIds.length > 0) {
-            const { data: companySideTns } = await supabase
-              .from('transactions')
-              .select('linked_transaction_id, is_finalized')
-              .eq('party_id', companyParty.id)
-              .in('linked_transaction_id', companyTnsIds);
-            
-            const companyFinalizedMap = new Map<string, boolean>();
-            companySideTns?.forEach(ct => {
-              if (ct.linked_transaction_id) {
-                companyFinalizedMap.set(ct.linked_transaction_id, ct.is_finalized || false);
-              }
-            });
-            
-            const activeCompanyTns = companyTns.filter(t => !t.linked_transaction_id || !companyFinalizedMap.get(t.linked_transaction_id));
-            totalVolume = activeCompanyTns.reduce((sum, t) => sum + t.credit, 0);
-          } else {
-            totalVolume = 0;
-          }
-        } else {
-          totalVolume = 0;
-        }
-      }
-      
-      const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
-      
-      const amountSign = isTake ? '-' : '';
-      setEditFormData(prev => ({
-        ...prev,
-        amount: `${amountSign}${calculatedComm.toFixed(2)}`,
-        remarks: 'COMMISSION'
-      }));
-    }
-  };
-
-  const handleSubmitEntry = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedParty || !amount || parseFloat(amount) === 0 || !linkedParty || !authUser) return;
-    setSubmitting(true);
-    const numAmt = parseFloat(amount);
-    const absAmt = Math.abs(numAmt);
-    try {
-      const firstPartyType = numAmt > 0 ? 'CR' : 'DR';
-      const secondPartyType = numAmt > 0 ? 'DR' : 'CR';
-
-      const chainId = generateUUID();
-
-      const isThreeWay = false;
-
-      if (isThreeWay) {
-        // Calculate commission (1%)
-        const commissionAmt = parseFloat((absAmt * 0.01).toFixed(2));
-
-        // Find the commission party
-        const { data: commParties } = await supabase
-          .from('parties')
-          .select('*')
-          .eq('system_type', 'commission')
-          .limit(1);
-
-        const commissionParty = commParties?.[0];
-        if (!commissionParty) throw new Error("Commission account not found in database.");
-
-        // Get current balances
-        const [balActive, balCompany, balComm] = await Promise.all([
-          getBalance(selectedParty.id),
-          getBalance(linkedParty.id),
-          getBalance(commissionParty.id)
-        ]);
-
-        const firstPartyCredit = firstPartyType === 'CR' ? absAmt : 0;
-        const firstPartyDebit = firstPartyType === 'DR' ? absAmt : 0;
-        const newBalActive = balActive + firstPartyCredit - firstPartyDebit;
-
-        const companyCredit = secondPartyType === 'CR' ? absAmt : 0;
-        const companyDebit = secondPartyType === 'DR' ? absAmt : 0;
-        const newBalCompany = balCompany + companyCredit - companyDebit;
-
-        const commCredit = firstPartyType === 'CR' ? commissionAmt : 0;
-        const commDebit = firstPartyType === 'DR' ? commissionAmt : 0;
-        const newBalComm = balComm + commCredit - commDebit;
-
-        const { error: insertErr } = await supabase.from('transactions').insert([
-          {
-            id: chainId,
-            user_id: authUser.id,
-            party_id: selectedParty.id,
-            linked_transaction_id: chainId,
-            remarks: remarks || '',
-            tns_type: firstPartyType,
-            credit: firstPartyCredit,
-            debit: firstPartyDebit,
-            balance: newBalActive
-          },
-          {
-            id: generateUUID(),
-            user_id: authUser.id,
-            party_id: linkedParty.id,
-            linked_transaction_id: chainId,
-            remarks: remarks || '',
-            tns_type: secondPartyType,
-            credit: companyCredit,
-            debit: companyDebit,
-            balance: newBalCompany
-          },
-          {
-            id: generateUUID(),
-            user_id: authUser.id,
-            party_id: commissionParty.id,
-            linked_transaction_id: chainId,
-            remarks: `1% Commission from ${selectedParty.party_name}`,
-            tns_type: firstPartyType,
-            credit: commCredit,
-            debit: commDebit,
-            balance: newBalComm
-          }
-        ]);
-
-        if (insertErr) throw insertErr;
-
-        // Recalculate balances to ensure everything is perfect
-        await recalculateBalances(selectedParty.id);
-        await recalculateBalances(linkedParty.id);
-        await recalculateBalances(commissionParty.id);
-
-      } else {
-        // Get current balances
-        const [balA, balB] = await Promise.all([
-          getBalance(selectedParty.id),
-          getBalance(linkedParty.id)
-        ]);
-
-        const creditA = firstPartyType === 'CR' ? absAmt : 0;
-        const debitA = firstPartyType === 'DR' ? absAmt : 0;
-        const newBalA = balA + creditA - debitA;
-
-        const creditB = secondPartyType === 'CR' ? absAmt : 0;
-        const debitB = secondPartyType === 'DR' ? absAmt : 0;
-        const newBalB = balB + creditB - debitB;
-
-        // Insert both transaction records atomically
-        const { error: insertErr } = await supabase.from('transactions').insert([
-          {
-            id: chainId,
-            user_id: authUser.id,
-            party_id: selectedParty.id,
-            linked_transaction_id: chainId,
-            remarks: remarks || '',
-            tns_type: firstPartyType,
-            credit: creditA,
-            debit: debitA,
-            balance: newBalA
-          },
-          {
-            id: generateUUID(),
-            user_id: authUser.id,
-            party_id: linkedParty.id,
-            linked_transaction_id: chainId,
-            remarks: remarks || '',
-            tns_type: secondPartyType,
-            credit: creditB,
-            debit: debitB,
-            balance: newBalB
-          }
-        ]);
-
-        if (insertErr) throw insertErr;
-
-        // Recalculate balances to ensure everything is perfect
-        await recalculateBalances(selectedParty.id);
-        await recalculateBalances(linkedParty.id);
-      }
-
-      setAmount(''); setRemarks(''); setLinkedParty(null); setLinkedSearch(''); linkedSearchRef.current?.focus();
-    } catch (err) { 
-      console.error(err); 
-      alert('Transaction creation failed: ' + ((err as any).message || 'Unknown database error'));
-    } finally { 
-      setSubmitting(false); 
-    }
+  const getAmountColorClass = () => {
+    if (!amount) return 'text-blue-600';
+    const val = parseFloat(amount);
+    if (isNaN(val) || val === 0) return 'text-blue-600';
+    return val > 0 ? 'text-emerald-600' : 'text-rose-600';
   };
 
   const hasSettlementSelected = Array.from(selectedTnsIds).some(id => {
@@ -1398,9 +399,30 @@ const LedgerView = () => {
   });
 
   const sidebarButtons = [
-    { name: 'Refresh All', icon: <RefreshCcw className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => { if (selectedParty) { fetchTransactions(selectedParty.id, isOldRecordsView); fetchAllTransactionsForPrint(selectedParty.id); } } },
-    { name: 'DC Report', icon: <FileText className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => setIsDcModalOpen(true) },
-    { name: 'Monday Final', icon: <Calendar className="w-4 h-4" />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', action: handleMondayFinal, disabled: isOldRecordsView },
+    { 
+      name: 'Refresh All', 
+      icon: <RefreshCcw className="w-4 h-4" />, 
+      color: 'bg-slate-100 text-slate-600', 
+      action: () => { 
+        if (selectedParty) { 
+          fetchTransactions(selectedParty.id, isOldRecordsView); 
+          fetchAllTransactionsForPrint(selectedParty.id); 
+        } 
+      } 
+    },
+    { 
+      name: 'DC Report', 
+      icon: <FileText className="w-4 h-4" />, 
+      color: 'bg-slate-100 text-slate-600', 
+      action: () => setIsDcModalOpen(true) 
+    },
+    { 
+      name: 'Monday Final', 
+      icon: <Calendar className="w-4 h-4" />, 
+      color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', 
+      action: handleMondayFinal, 
+      disabled: isOldRecordsView 
+    },
     { 
       name: isOldRecordsView ? 'Active Ledger' : 'Old Record', 
       icon: <History className="w-4 h-4" />, 
@@ -1425,14 +447,29 @@ const LedgerView = () => {
       action: handleDeleteTns, 
       disabled: selectedTnsIds.size === 0 || isOldRecordsView || hasSettlementSelected
     },
-    { name: 'Print', icon: <Printer className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => window.print() },
-    { name: 'Check All', icon: <CheckSquare className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => toggleSelectAllTns() },
-    { name: 'Exit', icon: <XCircle className="w-4 h-4" />, color: 'bg-orange-500 text-white shadow-md shadow-orange-200', action: handleExitParty },
+    { 
+      name: 'Print', 
+      icon: <Printer className="w-4 h-4" />, 
+      color: 'bg-slate-100 text-slate-600', 
+      action: () => window.print() 
+    },
+    { 
+      name: 'Check All', 
+      icon: <CheckSquare className="w-4 h-4" />, 
+      color: 'bg-slate-100 text-slate-600', 
+      action: () => toggleSelectAllTns() 
+    },
+    { 
+      name: 'Exit', 
+      icon: <XCircle className="w-4 h-4" />, 
+      color: 'bg-orange-500 text-white shadow-md shadow-orange-200', 
+      action: handleExitParty 
+    },
   ];
 
   if (loading) return <GlobalLoader fullScreen={true} />;
 
-  // Calculations for Print Ledger - Exclude settlement records from totals to prevent double-counting
+  // Computations for full print records
   const printTotalCredit = printTransactions.filter(t => !t.is_settlement).reduce((sum, t) => sum + Number(t.credit || 0), 0);
   const printTotalDebit = printTransactions.filter(t => !t.is_settlement).reduce((sum, t) => sum + Number(t.debit || 0), 0);
   const printFinalBalance = printTransactions.length > 0 ? printTransactions[printTransactions.length - 1].balance : 0;
@@ -1444,8 +481,13 @@ const LedgerView = () => {
         <div className="max-w-6xl mx-auto w-full px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-600 rounded-[1.5rem] flex items-center justify-center text-white shadow-lg shadow-blue-200 dark:shadow-none"><Database className="w-6 h-6" /></div>
-              <div><h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Party A/C Ledger</h1><p className="text-slate-500 dark:text-slate-400 font-medium text-sm">Select a party to begin.</p></div>
+              <div className="w-12 h-12 bg-blue-600 rounded-[1.5rem] flex items-center justify-center text-white shadow-lg shadow-blue-200 dark:shadow-none">
+                <Database className="w-6 h-6" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">Party A/C Ledger</h1>
+                <p className="text-slate-500 dark:text-slate-400 font-medium text-sm">Select a party to begin.</p>
+              </div>
             </div>
             <div className="flex gap-2 w-full md:w-auto items-center">
               <div className="relative flex-grow md:w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-sm focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all">
@@ -1518,7 +560,7 @@ const LedgerView = () => {
                           {party.system_type !== 'normal' && <span className="text-[8px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 px-1.5 py-0.5 rounded-full uppercase font-black">System</span>}
                         </div>
                       </td>
-                      <td className="px-8 py-3.5"><div className={`mx-auto w-24 py-1 rounded-lg text-[9px] font-black uppercase text-center flex items-center justify-center gap-1.5 ${((party.monday_final as any) === true || (party.monday_final as any) === 'true') ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-450' : 'bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-450'}`}>{ ((party.monday_final as any) === true || (party.monday_final as any) === 'true') ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}{((party.monday_final as any) === true || (party.monday_final as any) === 'true') ? 'Yes' : 'No'}</div></td>
+                      <td className="px-8 py-3.5"><div className={`mx-auto w-24 py-1 rounded-lg text-[9px] font-black uppercase text-center flex items-center justify-center gap-1.5 ${((party.monday_final as any) === true || (party.monday_final as any) === 'true') ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-455' : 'bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-455'}`}>{ ((party.monday_final as any) === true || (party.monday_final as any) === 'true') ? <CheckCircle2 className="w-3 h-3" /> : <XCircle className="w-3 h-3" />}{((party.monday_final as any) === true || (party.monday_final as any) === 'true') ? 'Yes' : 'No'}</div></td>
                       <td className="px-8 py-3.5 text-center"><div onClick={(e) => togglePartySelection(party.id, e)} className={`w-6 h-6 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedPartyIds.has(party.id) ? 'bg-blue-600 border-blue-600 shadow-md shadow-blue-100 dark:shadow-none' : 'border-slate-200 dark:border-slate-700 group-hover:border-blue-400'}`}><div className={`w-2 h-2 bg-white rounded-sm transition-opacity ${selectedPartyIds.has(party.id) ? 'opacity-100' : 'opacity-0'}`}></div></div></td>
                     </tr>
                   ))}
@@ -1553,14 +595,16 @@ const LedgerView = () => {
         <div className="flex flex-col h-auto lg:h-full lg:overflow-hidden">
           <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3 flex flex-col md:flex-row gap-4 md:items-center justify-between shrink-0 shadow-sm z-20 transition-colors duration-200">
             <div className="flex items-start md:items-center gap-3 md:gap-4">
-              <button onClick={handleExitParty} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0"><ArrowLeft className="w-5 h-5 md:w-6 md:h-6" /></button>
+              <button onClick={handleExitParty} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0">
+                <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
+              </button>
               <div className="flex flex-wrap items-center gap-2 md:gap-4" ref={headerDropdownRef}>
                 <div className="relative w-full sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
                   {firstHeaderMatch && (
                     <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
                       <span className="text-transparent">{headerSearch}</span>
-                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
+                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-450 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
                         {firstHeaderMatch.party_name.slice(headerSearch.length)}
                         <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
                       </span>
@@ -1609,7 +653,7 @@ const LedgerView = () => {
                   <span className="leading-none">{selectedParty.sr_no}</span>
                 </div>
                 <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-black text-sm shadow-sm transition-colors">
-                  <span className={`uppercase leading-none ${selectedParty.status === 'take' ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-450'}`}>
+                  <span className={`uppercase leading-none ${selectedParty.status === 'take' ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-455'}`}>
                     {selectedParty.status}
                   </span>
                   {selectedParty.system_type === 'normal' && (
@@ -1620,7 +664,12 @@ const LedgerView = () => {
                 </div>
               </div>
             </div>
-            <div className="text-left md:text-right px-10 md:px-0"><p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Closing Balance</p><p className={`text-2xl md:text-3xl font-black ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-450' : 'text-rose-600 dark:text-rose-450'}`}>₹ {Math.abs(closingBalance).toLocaleString()}<span className="text-sm ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span></p></div>
+            <div className="text-left md:text-right px-10 md:px-0">
+              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Closing Balance</p>
+              <p className={`text-2xl md:text-3xl font-black ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}`}>
+                ₹ {Math.abs(closingBalance).toLocaleString()}<span className="text-sm ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span>
+              </p>
+            </div>
           </div>
           <div className="flex flex-col lg:flex-row flex-grow lg:overflow-hidden h-auto lg:h-full">
             <div className="flex-grow flex flex-col h-auto lg:h-full lg:overflow-hidden relative">
@@ -1629,7 +678,11 @@ const LedgerView = () => {
                   <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
                       <tr>
-                        <th className="px-6 py-3 text-center"><div onClick={toggleSelectAllTns} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>{selectedTnsIds.size === transactions.length && transactions.length > 0 && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}</div></th>
+                        <th className="px-6 py-3 text-center">
+                          <div onClick={toggleSelectAllTns} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>
+                            {selectedTnsIds.size === transactions.length && transactions.length > 0 && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}
+                          </div>
+                        </th>
                         <th className="px-6 py-3">Date</th>
                         <th className="px-6 py-3">Particulars / Remarks</th>
                         <th className="px-6 py-3 text-right">Credit</th>
@@ -1640,7 +693,11 @@ const LedgerView = () => {
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
                       {transactions.map((t) => (
                         <tr key={t.id} onClick={() => toggleTnsSelection(t.id)} className={`cursor-pointer transition-all ${selectedTnsIds.has(t.id) ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' : t.is_settlement ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}>
-                          <td className="px-6 py-3 text-center"><div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}><div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div></div></td>
+                          <td className="px-6 py-3 text-center">
+                            <div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}>
+                              <div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div>
+                            </div>
+                          </td>
                           <td className={`px-6 py-3 text-[10px] ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{new Date(t.transaction_date).toLocaleDateString()}</td>
                           <td className="px-6 py-3 font-bold">
                             {!t.is_settlement && (
@@ -1649,14 +706,14 @@ const LedgerView = () => {
                               </span>
                             )}
                             {t.remarks && (
-                              <span className={`ml-2 text-xs font-medium italic ${selectedTnsIds.has(t.id) ? 'text-blue-100' : t.is_settlement ? 'text-blue-700 dark:text-blue-450 font-bold' : 'text-slate-400 dark:text-slate-500'}`}>
+                              <span className={`ml-2 text-xs font-medium italic ${selectedTnsIds.has(t.id) ? 'text-blue-100' : t.is_settlement ? 'text-blue-700 dark:text-blue-455 font-bold' : 'text-slate-400 dark:text-slate-500'}`}>
                                 ({t.remarks})
                               </span>
                             )}
                           </td>
-                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-450 font-bold'}`}>{t.credit > 0 ? `₹ ${t.credit.toLocaleString()}` : '-'}</td>
+                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${t.credit.toLocaleString()}` : '-'}</td>
                           <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-400 font-bold'}`}>{t.debit > 0 ? `₹ ${t.debit.toLocaleString()}` : '-'}</td>
-                          <td className={`px-6 py-3 text-right font-black ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-450' : 'text-rose-600 dark:text-rose-400')}`}>₹ {Math.abs(t.balance).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
+                          <td className={`px-6 py-3 text-right font-black ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-400')}`}>₹ {Math.abs(t.balance).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1666,7 +723,8 @@ const LedgerView = () => {
               <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
                 <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="space-y-1.5 col-span-1 relative" ref={dropdownRef}><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
+                    <div className="space-y-1.5 col-span-1 relative" ref={dropdownRef}>
+                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
                       <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
                         <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
                         {firstLinkedMatch && (
@@ -1694,10 +752,10 @@ const LedgerView = () => {
                             } else if (e.key === 'Enter' || e.key === 'Tab') {
                               if (firstLinkedMatch) {
                                 e.preventDefault();
-                                selectLinkedParty(firstLinkedMatch);
+                                handleSelectLinkedParty(firstLinkedMatch);
                               } else if (filteredLinkedParties.length > 0) {
                                 e.preventDefault();
-                                selectLinkedParty(filteredLinkedParties[highlightedIndex]);
+                                handleSelectLinkedParty(filteredLinkedParties[highlightedIndex]);
                               } else if (linkedParty) {
                                 e.preventDefault();
                                 amountInputRef.current?.focus();
@@ -1711,7 +769,7 @@ const LedgerView = () => {
                             {filteredLinkedParties.map((p, i) => (
                               <div 
                                 key={p.id} 
-                                onClick={() => selectLinkedParty(p)} 
+                                onClick={() => handleSelectLinkedParty(p)} 
                                 className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
                               >
                                 <span className="font-bold">{p.party_name}</span>
@@ -1751,16 +809,17 @@ const LedgerView = () => {
                           className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
                           value={remarks} 
                           onChange={(e) => setRemarks(e.target.value)} 
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              // Enter submits the form naturally
-                            }
-                          }}
                         />
                       </div>
                     </div>
                   </div>
-                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
+                  <button 
+                    type="submit" 
+                    disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} 
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0"
+                  >
+                    {submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}
+                  </button>
                 </form>
               </div>
             </div>
@@ -1787,395 +846,56 @@ const LedgerView = () => {
           </div>
         </div>
       )}
-      {isEditModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsEditModalOpen(false)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/30">
-              <h3 className="text-2xl font-black text-slate-900 dark:text-white">Modify Entry</h3>
-              <button onClick={() => setIsEditModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all"><X className="w-6 h-6" /></button>
-            </div>
-            <div className="p-8 space-y-6">
-              <div className="space-y-1.5 relative" ref={editDropdownRef}>
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
-                <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
-                  <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-455 z-10" />
-                  {firstEditLinkedMatch && (
-                    <div className="absolute inset-0 pl-11 pr-8 py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
-                      <span className="text-transparent">{editFormData.linkedSearch}</span>
-                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
-                        {firstEditLinkedMatch.party_name.slice(editFormData.linkedSearch.length)}
-                        <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[9px] text-blue-500 font-black shadow-xs">TAB</kbd>
-                      </span>
-                    </div>
-                  )}
-                  <input 
-                    ref={editLinkedSearchRef} 
-                    placeholder="Search Party..." 
-                    className="w-full pl-11 pr-8 py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10" 
-                    value={editFormData.linkedSearch} 
-                    onChange={(e) => { 
-                      setEditFormData({ ...editFormData, linkedSearch: e.target.value }); 
-                      setIsEditLinkedSearchOpen(true); 
-                      setEditHighlightedIndex(0); 
-                    }} 
-                    onClick={() => setIsEditLinkedSearchOpen(true)} 
-                    onKeyDown={(e) => { 
-                      if ((e.key === 'Enter' || e.key === 'Tab') && firstEditLinkedMatch) {
-                        e.preventDefault();
-                        selectEditLinkedParty(firstEditLinkedMatch);
-                      } else if(e.key === 'ArrowDown') { 
-                        setIsEditLinkedSearchOpen(true); 
-                        setEditHighlightedIndex(p => Math.min(p+1, filteredEditLinkedParties.length-1)); 
-                      } else if(e.key === 'ArrowUp') {
-                        setEditHighlightedIndex(p => Math.max(p-1, 0)); 
-                      } else if(e.key === 'Enter' && filteredEditLinkedParties.length > 0) { 
-                        e.preventDefault(); 
-                        selectEditLinkedParty(filteredEditLinkedParties[editHighlightedIndex]); 
-                      } 
-                    }} 
-                  />
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-655 z-10 pointer-events-none" />
-                  {isEditLinkedSearchOpen && filteredEditLinkedParties.length > 0 && (
-                    <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-40 overflow-y-auto z-50">
-                      {filteredEditLinkedParties.map((p, i) => (
-                        <div 
-                          key={p.id} 
-                          onClick={() => selectEditLinkedParty(p)} 
-                          className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === editHighlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
-                        >
-                          <span className="font-bold">{p.party_name}</span>
-                          <span className="text-[10px] font-black opacity-40 dark:opacity-60 uppercase">{p.sr_no}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
-                <input 
-                  required 
-                  type="number" 
-                  step="0.01" 
-                  placeholder="3000 (CR) or -3000 (DR)" 
-                  className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getEditAmountColorClass()}`} 
-                  value={editFormData.amount} 
-                  onChange={(e) => setEditFormData({ ...editFormData, amount: e.target.value })} 
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
-                <div className="relative">
-                  <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
-                  <input 
-                    placeholder="Enter details..." 
-                    className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
-                    value={editFormData.remarks} 
-                    onChange={(e) => setEditFormData({ ...editFormData, remarks: e.target.value })} 
-                  />
-                </div>
-              </div>
-              <div className="flex gap-4 pt-4">
-                <button onClick={() => setIsEditModalOpen(false)} className="flex-grow py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all">Cancel</button>
-                <button onClick={saveModification} disabled={submitting || !editFormData.amount || parseFloat(editFormData.amount) === 0 || !editFormData.linkedParty} className="flex-grow py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"><Save className="w-5 h-5" />Update</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      
+      {/* Refactored Modular Modals */}
+      <EditTransactionModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        editFormData={editFormData}
+        setEditFormData={setEditFormData}
+        isEditLinkedSearchOpen={isEditLinkedSearchOpen}
+        setIsEditLinkedSearchOpen={setIsEditLinkedSearchOpen}
+        editHighlightedIndex={editHighlightedIndex}
+        setEditHighlightedIndex={setEditHighlightedIndex}
+        filteredEditLinkedParties={filteredEditLinkedParties}
+        firstEditLinkedMatch={firstEditLinkedMatch}
+        selectEditLinkedParty={selectEditLinkedParty}
+        onSave={saveModification}
+        submitting={submitting}
+      />
 
-      {/* Modern Confirmation Modal */}
-      {confirmDialog.isOpen && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] animate-in fade-in duration-200" onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })} />
-          <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 p-8 text-center">
-            <div className={`w-20 h-20 mx-auto rounded-3xl flex items-center justify-center mb-6 ${
-              confirmDialog.type === 'danger' ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-600 dark:text-rose-450' : 
-              confirmDialog.type === 'success' ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-450' : 
-              'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400'
-            }`}>
-              {confirmDialog.type === 'danger' ? <Trash2 className="w-10 h-10" /> : 
-               confirmDialog.type === 'success' ? <CheckCircle2 className="w-10 h-10" /> : 
-               <Edit2 className="w-10 h-10" />}
-            </div>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">{confirmDialog.title}</h3>
-            <p className="text-slate-500 dark:text-slate-400 font-medium leading-relaxed mb-8">{confirmDialog.message}</p>
-            <div className="flex flex-col gap-3">
-              <button 
-                onClick={confirmDialog.onConfirm}
-                className={`w-full py-4 rounded-2xl font-black text-white shadow-lg transition-all active:scale-95 ${
-                  confirmDialog.type === 'danger' ? 'bg-rose-600 shadow-rose-200 dark:shadow-none hover:bg-rose-700' : 
-                  confirmDialog.type === 'success' ? 'bg-emerald-600 shadow-emerald-200 dark:shadow-none hover:bg-emerald-700' : 
-                  'bg-blue-600 shadow-blue-200 dark:shadow-none hover:bg-blue-700'
-                }`}
-              >
-                Confirm Action
-              </button>
-              <button 
-                onClick={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
-                className="w-full py-4 rounded-2xl font-bold text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        onConfirm={confirmDialog.onConfirm}
+        onCancel={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+      />
 
-      {/* DC Report Modal */}
-      {isDcModalOpen && (
-        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setIsDcModalOpen(false)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-8 overflow-visible animate-in zoom-in-95 duration-200">
-            <button onClick={() => setIsDcModalOpen(false)} className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-all">
-              <X className="w-5 h-5" />
-            </button>
-            <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-6">
-              {dcReportData ? 'DC Report' : 'Generate DC Report'}
-            </h3>
-            
-            {!dcReportData ? (
-              <div className="space-y-4">
-                <CustomDatePicker 
-                  label="From Date" 
-                  value={dcFromDate} 
-                  onChange={setDcFromDate} 
-                />
-                <CustomDatePicker 
-                  label="To Date" 
-                  value={dcToDate} 
-                  onChange={setDcToDate} 
-                />
-                <button 
-                  onClick={fetchDcReport}
-                  disabled={!dcFromDate || !dcToDate || isDcLoading}
-                  className="w-full py-4 mt-4 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                >
-                  {isDcLoading ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <FileText className="w-5 h-5" />}
-                  Generate Report
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="text-sm font-bold text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 py-3 px-4 rounded-xl border border-slate-100 dark:border-slate-800 text-center">
-                  Period: <span className="text-slate-800 dark:text-slate-200 font-black">{dcFromDate}</span> to <span className="text-slate-800 dark:text-slate-200 font-black">{dcToDate}</span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 p-5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 relative text-center divide-x divide-slate-200 dark:divide-slate-800">
-                  {isDcLoading && (
-                    <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-2xl flex items-center justify-center z-10">
-                      <RefreshCcw className="w-6 h-6 animate-spin text-blue-600" />
-                    </div>
-                  )}
-                  <div className="flex flex-col items-center justify-center px-2">
-                    <span className="text-[10px] font-black text-emerald-600/70 uppercase tracking-widest mb-1.5">Total Credit</span>
-                    <span className="text-lg md:text-xl font-black text-emerald-600">₹{(dcReportData?.credit || 0).toLocaleString()}</span>
-                  </div>
-                  <div className="flex flex-col items-center justify-center px-2">
-                    <span className="text-[10px] font-black text-rose-600/70 uppercase tracking-widest mb-1.5">Total Debit</span>
-                    <span className="text-lg md:text-xl font-black text-rose-600">₹{(dcReportData?.debit || 0).toLocaleString()}</span>
-                  </div>
-                  <div className="flex flex-col items-center justify-center px-2">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Net Balance</span>
-                    <span className={`text-lg md:text-xl font-black flex items-baseline gap-1 ${(dcReportData?.balance || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      ₹{Math.abs(dcReportData?.balance || 0).toLocaleString()} 
-                      <span className="text-xs font-bold opacity-80">{(dcReportData?.balance || 0) >= 0 ? '(CR)' : '(DR)'}</span>
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => setDcReportData(null)}
-                    className="flex-1 py-4 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95"
-                  >
-                    Change Dates
-                  </button>
-                  <button 
-                    onClick={() => setIsDcModalOpen(false)}
-                    className="flex-1 py-4 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black rounded-2xl hover:opacity-90 transition-all active:scale-95"
-                  >
-                    Close
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
+      <DcReportModal
+        isOpen={isDcModalOpen}
+        onClose={() => setIsDcModalOpen(false)}
+        dcFromDate={dcFromDate}
+        setDcFromDate={setDcFromDate}
+        dcToDate={dcToDate}
+        setDcToDate={setDcToDate}
+        fetchDcReport={fetchDcReport}
+        isDcLoading={isDcLoading}
+        dcReportData={dcReportData}
+        setDcReportData={setDcReportData}
+      />
       </div>
 
       {/* Premium Printable PDF Layout */}
       {selectedParty && (
-        <div className="hidden print:block bg-white text-black p-4 min-h-screen">
-          {/* Custom style overrides for high quality printing */}
-          <style dangerouslySetInnerHTML={{ __html: `
-            @media print {
-              nav, footer, header, .navbar, .footer {
-                display: none !important;
-              }
-              body {
-                background: white !important;
-                color: black !important;
-                font-family: 'Inter', system-ui, sans-serif !important;
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-              }
-              @page {
-                size: A4 portrait;
-                margin: 1.2cm 1.5cm;
-              }
-              .print-container {
-                max-width: 100% !important;
-                width: 100% !important;
-              }
-              .no-page-break {
-                page-break-inside: avoid !important;
-              }
-              table {
-                width: 100% !important;
-                border-collapse: collapse !important;
-                margin-top: 15px !important;
-              }
-              th {
-                background-color: #f1f5f9 !important;
-                color: #0f172a !important;
-                border: 1px solid #cbd5e1 !important;
-                padding: 10px 12px !important;
-                font-size: 10px !important;
-                font-weight: 800 !important;
-                text-transform: uppercase !important;
-                letter-spacing: 0.05em !important;
-              }
-              td {
-                border: 1px solid #e2e8f0 !important;
-                padding: 8px 12px !important;
-                font-size: 10px !important;
-              }
-              tr:nth-child(even) {
-                background-color: #f8fafc !important;
-              }
-            }
-          `}} />
-
-          {/* Letterhead Header */}
-          <div className="border-b-2 border-slate-800 pb-4 mb-6 flex justify-between items-end">
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-900">ESCROW LEDGER SERVICES</h1>
-              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Secure Transaction Ledgers & Financial Settlements</p>
-            </div>
-          </div>
-
-          {/* Statement Info Title */}
-          <div className="text-center mb-8">
-            <h2 className="text-xl font-extrabold text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-1.5 inline-block px-4">
-              Account Statement
-            </h2>
-            <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Complete History (Start to Finish)</p>
-          </div>
-
-          {/* Party and Statement Metadata Grid */}
-          <div className="grid grid-cols-2 gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-100 mb-6 text-sm">
-            <div className="space-y-1.5">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Party Details</p>
-              <h3 className="text-lg font-black text-slate-900 leading-tight">{selectedParty.party_name}</h3>
-              <p className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
-                <span className="bg-slate-200 px-1.5 py-0.5 rounded text-[10px] font-bold text-slate-700">SR NO: {selectedParty.sr_no}</span>
-                <span className="uppercase font-bold text-blue-600">({selectedParty.status})</span>
-                {selectedParty.system_type === 'normal' && <span className="text-slate-400">| Comm Rate: {selectedParty.commission_rate}%</span>}
-              </p>
-            </div>
-            <div className="space-y-1 text-right text-xs text-slate-600 font-medium">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Statement Details</p>
-              <p><span className="font-bold text-slate-800">Generated On:</span> {new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
-              <p><span className="font-bold text-slate-800">Period:</span> Full History (Start to Finish)</p>
-              <p><span className="font-bold text-slate-800">Records Shown:</span> {printTransactions.length} Entries</p>
-            </div>
-          </div>
-
-          {/* Financial Summary Box */}
-          <div className="grid grid-cols-3 gap-1 bg-slate-50 rounded-2xl border border-slate-200 text-center divide-x divide-slate-200 p-4 mb-6">
-            <div className="flex flex-col items-center justify-center">
-              <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Credit</span>
-              <span className="text-base font-black text-emerald-600">₹ {printTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-            <div className="flex flex-col items-center justify-center">
-              <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">Total Debit</span>
-              <span className="text-base font-black text-rose-600">₹ {printTotalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-            </div>
-            <div className="flex flex-col items-center justify-center">
-              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Statement Balance</span>
-              <span className={`text-base font-black ${printFinalBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                ₹ {Math.abs(printFinalBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {printFinalBalance >= 0 ? 'CR' : 'DR'}
-              </span>
-            </div>
-          </div>
-
-          {/* Transaction Table */}
-          {printTransactions.length === 0 ? (
-            <div className="text-center py-10 border border-dashed border-slate-200 rounded-xl text-slate-400 font-medium">
-              No transactions found in full history.
-            </div>
-          ) : (
-            <table className="w-full text-left">
-              <thead>
-                <tr>
-                  <th className="w-24 text-center">Date</th>
-                  <th>Particulars / Remarks</th>
-                  <th className="w-36 text-right">Credit (₹)</th>
-                  <th className="w-36 text-right">Debit (₹)</th>
-                  <th className="w-40 text-right">Balance (₹)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 font-medium">
-                {printTransactions.map((t) => (
-                  <tr key={t.id} className="no-page-break">
-                    <td className="text-center text-slate-500 font-mono text-[9px]">
-                      {new Date(t.transaction_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td>
-                      {!t.is_settlement ? (
-                        <span className="font-bold text-slate-900 uppercase tracking-tight text-[10px]">
-                          {t.partner_party_name || '-'}
-                        </span>
-                      ) : (
-                        <span className="font-extrabold text-blue-700 text-[10px] tracking-wide">
-                          MONDAY FINAL SETTLEMENT
-                        </span>
-                      )}
-                      {t.remarks && t.remarks !== 'MONDAY FINAL SETTLEMENT' && (
-                        <span className={`ml-2 text-[9px] italic ${t.is_settlement ? 'text-blue-600 font-bold' : 'text-slate-400'}`}>
-                          ({t.remarks})
-                        </span>
-                      )}
-                    </td>
-                    <td className="text-right text-emerald-600 font-bold">
-                      {!t.is_settlement && t.credit > 0 ? `₹ ${t.credit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                    </td>
-                    <td className="text-right text-rose-600 font-bold">
-                      {!t.is_settlement && t.debit > 0 ? `₹ ${t.debit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
-                    </td>
-                    <td className={`text-right font-black ${t.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      ₹ {Math.abs(t.balance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.balance >= 0 ? 'Cr' : 'Dr'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          {/* Footer Signature Details */}
-          <div className="mt-16 no-page-break flex justify-between items-end px-4 text-xs font-semibold text-slate-500">
-            <div>
-              <p className="border-t border-slate-300 w-44 text-center pt-1.5 uppercase tracking-wider text-[9px] font-black">Prepared By</p>
-            </div>
-            <div>
-              <p className="border-t border-slate-300 w-44 text-center pt-1.5 uppercase tracking-wider text-[9px] font-black">Authorized Signatory</p>
-            </div>
-          </div>
-        </div>
+        <LedgerPrintLayout
+          selectedParty={selectedParty}
+          printTransactions={printTransactions}
+          printTotalCredit={printTotalCredit}
+          printTotalDebit={printTotalDebit}
+          printFinalBalance={printFinalBalance}
+        />
       )}
     </>
   );
