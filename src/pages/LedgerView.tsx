@@ -2013,6 +2013,9 @@ const LedgerView = () => {
           {/* Custom style overrides for high quality printing */}
           <style dangerouslySetInnerHTML={{ __html: `
             @media print {
+              nav, footer, header, .navbar, .footer {
+                display: none !important;
+              }
               body {
                 background: white !important;
                 color: black !important;
@@ -2062,10 +2065,6 @@ const LedgerView = () => {
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900">ESCROW LEDGER SERVICES</h1>
               <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-0.5">Secure Transaction Ledgers & Financial Settlements</p>
-            </div>
-            <div className="text-right text-[10px] text-slate-500 font-medium">
-              <p>Web: escrow-ledger.web.app</p>
-              <p>Email: support@escrow-ledger.com</p>
             </div>
           </div>
 
