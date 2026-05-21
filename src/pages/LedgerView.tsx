@@ -11,6 +11,7 @@ import {
   ArrowRightLeft, 
   FileText,
   Calendar,
+  History,
   Edit2,
   Trash2,
   CheckSquare,
@@ -272,6 +273,7 @@ const LedgerView = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [closingBalance, setClosingBalance] = useState(0);
 
+  const [isOldRecordsView, setIsOldRecordsView] = useState(false);
   const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
   const [selectedTnsIds, setSelectedTnsIds] = useState<Set<string>>(new Set());
   
@@ -431,6 +433,7 @@ const LedgerView = () => {
         setRemarks('');
         setIsHeaderSearchOpen(false);
         setHeaderSearch('');
+        setIsOldRecordsView(false);
       }
     }
   }, [searchParams, parties]);
@@ -463,14 +466,14 @@ const LedgerView = () => {
     } catch (err) { console.error(err); } finally { setLoading(false); }
   };
 
-  const fetchTransactions = async (partyId: string) => {
+  const fetchTransactions = async (partyId: string, showArchived: boolean = false) => {
     try {
       const { data: tnsData, error: tnsError } = await supabase
         .from('transactions')
         .select('*')
         .eq('party_id', partyId)
-        .order('transaction_date', { ascending: true })
-        .order('created_at', { ascending: true });
+        .filter('is_finalized', showArchived ? 'eq' : 'neq', true) // If not archived, show anything NOT true (false or null)
+        .order('transaction_date', { ascending: true });
         
       if (tnsError) throw tnsError;
       
@@ -500,7 +503,10 @@ const LedgerView = () => {
       }
 
       setTransactions(currentTns);
-      setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
+      // We only update closing balance if we are viewing active records
+      if (!showArchived) {
+        setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -678,6 +684,7 @@ const LedgerView = () => {
     setRemarks('');
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
+    setIsOldRecordsView(false);
   };
 
   const handleExitParty = () => {
@@ -691,6 +698,7 @@ const LedgerView = () => {
     setRemarks('');
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
+    setIsOldRecordsView(false);
   };
 
   const togglePartySelection = (partyId: string, e: React.MouseEvent) => {
@@ -729,15 +737,15 @@ const LedgerView = () => {
   };
 
   const handleDeleteTns = async () => {
-    if (selectedTnsIds.size === 0 || !selectedParty || submitting) return;
+    if (selectedTnsIds.size === 0 || !selectedParty || submitting || isOldRecordsView) return;
 
-    const hasSettlementOrFinalized = Array.from(selectedTnsIds).some(id => {
+    const hasSettlement = Array.from(selectedTnsIds).some(id => {
       const t = transactions.find(item => item.id === id);
-      return t?.is_settlement === true || t?.is_finalized === true;
+      return t?.is_settlement === true;
     });
 
-    if (hasSettlementOrFinalized) {
-      alert('Monday Final settled or archived entries cannot be deleted.');
+    if (hasSettlement) {
+      alert('Monday Final settlement records cannot be deleted once created.');
       return;
     }
 
@@ -789,13 +797,13 @@ const LedgerView = () => {
   };
 
   const handleModifyTns = async () => {
-    if (selectedTnsIds.size !== 1 || !selectedParty) return;
+    if (selectedTnsIds.size !== 1 || isOldRecordsView || !selectedParty) return;
     const tnsId = Array.from(selectedTnsIds)[0];
     const tnsA = transactions.find(t => t.id === tnsId);
     if (!tnsA) return;
 
-    if (tnsA.is_settlement || tnsA.is_finalized) {
-      alert('Monday Final settled or archived entries cannot be modified.');
+    if (tnsA.is_settlement) {
+      alert('Monday Final settlement records cannot be modified once created.');
       return;
     }
 
@@ -1332,28 +1340,38 @@ const LedgerView = () => {
     }
   };
 
-  const hasSettlementOrFinalizedSelected = Array.from(selectedTnsIds).some(id => {
+  const hasSettlementSelected = Array.from(selectedTnsIds).some(id => {
     const t = transactions.find(item => item.id === id);
-    return t?.is_settlement === true || t?.is_finalized === true;
+    return t?.is_settlement === true;
   });
 
   const sidebarButtons = [
     { name: 'Refresh All', icon: <RefreshCcw className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => fetchTransactions(selectedParty?.id || '') },
     { name: 'DC Report', icon: <FileText className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => setIsDcModalOpen(true) },
-    { name: 'Monday Final', icon: <Calendar className="w-4 h-4" />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', action: handleMondayFinal },
+    { name: 'Monday Final', icon: <Calendar className="w-4 h-4" />, color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', action: handleMondayFinal, disabled: isOldRecordsView },
+    { 
+      name: isOldRecordsView ? 'Active Ledger' : 'Old Record', 
+      icon: <History className="w-4 h-4" />, 
+      color: isOldRecordsView ? 'bg-orange-600 text-white shadow-md shadow-orange-200' : 'bg-slate-100 text-slate-600', 
+      action: () => {
+        const nextState = !isOldRecordsView;
+        setIsOldRecordsView(nextState);
+        fetchTransactions(selectedParty!.id, nextState);
+      } 
+    },
     { 
       name: 'Modify', 
       icon: <Edit2 className="w-4 h-4" />, 
-      color: hasSettlementOrFinalizedSelected ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white shadow-md shadow-blue-200', 
+      color: (isOldRecordsView || hasSettlementSelected) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white shadow-md shadow-blue-200', 
       action: handleModifyTns, 
-      disabled: selectedTnsIds.size !== 1 || hasSettlementOrFinalizedSelected
+      disabled: selectedTnsIds.size !== 1 || isOldRecordsView || hasSettlementSelected
     },
     { 
       name: 'Delete', 
       icon: <Trash2 className="w-4 h-4" />, 
-      color: hasSettlementOrFinalizedSelected ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-600 text-white shadow-md shadow-rose-200', 
+      color: (isOldRecordsView || hasSettlementSelected) ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-600 text-white shadow-md shadow-rose-200', 
       action: handleDeleteTns, 
-      disabled: selectedTnsIds.size === 0 || hasSettlementOrFinalizedSelected
+      disabled: selectedTnsIds.size === 0 || isOldRecordsView || hasSettlementSelected
     },
     { name: 'Print', icon: <Printer className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => window.print() },
     { name: 'Check All', icon: <CheckSquare className="w-4 h-4" />, color: 'bg-slate-100 text-slate-600', action: () => toggleSelectAllTns() },
@@ -1563,19 +1581,7 @@ const LedgerView = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
                       {transactions.map((t) => (
-                        <tr 
-                          key={t.id} 
-                          onClick={() => toggleTnsSelection(t.id)} 
-                          className={`cursor-pointer transition-all ${
-                            selectedTnsIds.has(t.id) 
-                              ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' 
-                              : t.is_settlement 
-                                ? 'bg-blue-50/80 dark:bg-blue-950/30 border-l-4 border-blue-500' 
-                                : t.is_finalized 
-                                  ? 'opacity-70 hover:opacity-90 bg-slate-50/40 dark:bg-slate-900/20 border-l-4 border-slate-300 dark:border-slate-700' 
-                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'
-                          }`}
-                        >
+                        <tr key={t.id} onClick={() => toggleTnsSelection(t.id)} className={`cursor-pointer transition-all ${selectedTnsIds.has(t.id) ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' : t.is_settlement ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}>
                           <td className="px-6 py-3 text-center"><div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}><div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div></div></td>
                           <td className={`px-6 py-3 text-[10px] ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{new Date(t.transaction_date).toLocaleDateString()}</td>
                           <td className="px-6 py-3 font-bold">
@@ -1600,7 +1606,7 @@ const LedgerView = () => {
                 </div>
               </div>
               <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
-                <form onSubmit={handleSubmitEntry} className="max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end">
+                <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className="space-y-1.5 col-span-1 relative" ref={dropdownRef}><label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
                       <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
@@ -1696,7 +1702,7 @@ const LedgerView = () => {
                       </div>
                     </div>
                   </div>
-                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
+                  <button type="submit" disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0">{submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}</button>
                 </form>
               </div>
             </div>
