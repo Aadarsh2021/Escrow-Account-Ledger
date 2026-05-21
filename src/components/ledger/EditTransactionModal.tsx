@@ -53,6 +53,7 @@ export const EditTransactionModal = ({
   submitting
 }: EditTransactionModalProps) => {
   const editLinkedSearchRef = useRef<HTMLInputElement>(null);
+  const amountInputRef = useRef<HTMLInputElement>(null);
   const editDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -65,7 +66,23 @@ export const EditTransactionModal = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [setIsEditLinkedSearchOpen]);
 
+  // Autofocus party input field when the Modify modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setTimeout(() => {
+        editLinkedSearchRef.current?.focus();
+      }, 50);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
+
+  const handlePartySelect = (party: Party) => {
+    selectEditLinkedParty(party);
+    setTimeout(() => {
+      amountInputRef.current?.focus();
+    }, 50);
+  };
 
   const getEditAmountColorClass = () => {
     if (!editFormData.amount) return 'text-blue-600';
@@ -97,7 +114,7 @@ export const EditTransactionModal = ({
               <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-455 z-10" />
               {firstEditLinkedMatch && (
                 <div className="absolute inset-0 pl-11 pr-8 py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
-                  <span className="text-transparent">{editFormData.linkedSearch}</span>
+                  <span className="text-transparent">{firstEditLinkedMatch.party_name.slice(0, editFormData.linkedSearch.length)}</span>
                   <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
                     {firstEditLinkedMatch.party_name.slice(editFormData.linkedSearch.length)}
                     <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[9px] text-blue-500 font-black shadow-xs">TAB</kbd>
@@ -107,27 +124,46 @@ export const EditTransactionModal = ({
               <input 
                 ref={editLinkedSearchRef} 
                 placeholder="Search Party..." 
-                className="w-full pl-11 pr-8 py-3 bg-transparent outline-none font-bold text-slate-888 dark:text-white relative z-10" 
+                className="w-full pl-11 pr-8 py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10" 
                 value={editFormData.linkedSearch} 
                 onChange={(e) => { 
-                  setEditFormData(prev => ({ ...prev, linkedSearch: e.target.value })); 
+                  const val = e.target.value;
+                  setEditFormData(prev => ({ 
+                    ...prev, 
+                    linkedSearch: val,
+                    linkedParty: prev.linkedParty && val === prev.linkedParty.party_name ? prev.linkedParty : null
+                  })); 
                   setIsEditLinkedSearchOpen(true); 
                   setEditHighlightedIndex(0); 
                 }} 
                 onClick={() => setIsEditLinkedSearchOpen(true)} 
                 onKeyDown={(e) => { 
-                  if ((e.key === 'Enter' || e.key === 'Tab') && firstEditLinkedMatch) {
+                  const isEditSearchActive = editFormData.linkedSearch.trim() !== '' && (!editFormData.linkedParty || editFormData.linkedSearch !== editFormData.linkedParty.party_name);
+                  
+                  if (e.key === 'Escape') {
                     e.preventDefault();
-                    selectEditLinkedParty(firstEditLinkedMatch);
+                    if (isEditLinkedSearchOpen) {
+                      setIsEditLinkedSearchOpen(false);
+                    } else {
+                      onClose();
+                    }
+                  } else if ((e.key === 'Enter' || e.key === 'Tab') && isEditSearchActive && firstEditLinkedMatch) {
+                    e.preventDefault();
+                    handlePartySelect(firstEditLinkedMatch);
                   } else if (e.key === 'ArrowDown') { 
+                    e.preventDefault();
                     setIsEditLinkedSearchOpen(true); 
                     setEditHighlightedIndex(p => Math.min(p + 1, filteredEditLinkedParties.length - 1)); 
                   } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
                     setEditHighlightedIndex(p => Math.max(p - 1, 0)); 
-                  } else if (e.key === 'Enter' && filteredEditLinkedParties.length > 0) { 
+                  } else if (e.key === 'Enter' && isEditSearchActive && filteredEditLinkedParties.length > 0) { 
                     e.preventDefault(); 
-                    selectEditLinkedParty(filteredEditLinkedParties[editHighlightedIndex]); 
-                  } 
+                    handlePartySelect(filteredEditLinkedParties[editHighlightedIndex]); 
+                  } else if ((e.key === 'Enter' || e.key === 'Tab') && editFormData.linkedParty) {
+                    e.preventDefault();
+                    amountInputRef.current?.focus();
+                  }
                 }} 
               />
               <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-655 z-10 pointer-events-none" />
@@ -136,7 +172,7 @@ export const EditTransactionModal = ({
                   {filteredEditLinkedParties.map((p, i) => (
                     <div 
                       key={p.id} 
-                      onClick={() => selectEditLinkedParty(p)} 
+                      onClick={() => handlePartySelect(p)} 
                       className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === editHighlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
                     >
                       <span className="font-bold">{p.party_name}</span>
@@ -150,6 +186,7 @@ export const EditTransactionModal = ({
           <div className="space-y-1.5">
             <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
             <input 
+              ref={amountInputRef}
               required 
               type="number" 
               step="0.01" 

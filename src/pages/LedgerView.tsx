@@ -355,9 +355,11 @@ const LedgerView = () => {
   const totalPages = Math.ceil(filteredParties.length / ITEMS_PER_PAGE);
   const paginatedParties = filteredParties.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
+  const isSearchActive = linkedSearch.trim() !== '' && (!linkedParty || linkedSearch !== linkedParty.party_name);
+
   const filteredLinkedParties = parties.filter(p => 
     p.id !== selectedParty?.id && 
-    (p.party_name.toLowerCase().includes(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(linkedSearch.toLowerCase()))
+    (!isSearchActive || p.party_name.toLowerCase().includes(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(linkedSearch.toLowerCase()))
   );
   
   const filteredHeaderParties = parties.filter(p => 
@@ -373,16 +375,18 @@ const LedgerView = () => {
     ? filteredHeaderParties.find(p => p.party_name.toLowerCase().startsWith(headerSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(headerSearch.toLowerCase()))
     : null;
 
-  const firstLinkedMatch = linkedSearch
+  const firstLinkedMatch = isSearchActive
     ? filteredLinkedParties.find(p => p.party_name.toLowerCase().startsWith(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(linkedSearch.toLowerCase()))
     : null;
 
+  const isEditSearchActive = editFormData.linkedSearch.trim() !== '' && (!editFormData.linkedParty || editFormData.linkedSearch !== editFormData.linkedParty.party_name);
+
   const filteredEditLinkedParties = parties.filter(p => 
     p.id !== selectedParty?.id && 
-    (p.party_name.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()))
+    (!isEditSearchActive || p.party_name.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(editFormData.linkedSearch.toLowerCase()))
   );
 
-  const firstEditLinkedMatch = editFormData.linkedSearch
+  const firstEditLinkedMatch = isEditSearchActive
      ? filteredEditLinkedParties.find(p => p.party_name.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().startsWith(editFormData.linkedSearch.toLowerCase()))
      : null;
 
@@ -603,7 +607,7 @@ const LedgerView = () => {
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
                   {firstHeaderMatch && (
                     <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
-                      <span className="text-transparent">{headerSearch}</span>
+                      <span className="text-transparent">{firstHeaderMatch.party_name.slice(0, headerSearch.length)}</span>
                       <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-450 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
                         {firstHeaderMatch.party_name.slice(headerSearch.length)}
                         <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
@@ -618,15 +622,21 @@ const LedgerView = () => {
                     onChange={(e) => { setHeaderSearch(e.target.value); setIsHeaderSearchOpen(true); setHighlightedIndex(0); }} 
                     onClick={() => setIsHeaderSearchOpen(true)} 
                     onKeyDown={(e) => { 
-                      if ((e.key === 'Enter' || e.key === 'Tab') && firstHeaderMatch) {
+                      const isHeaderSearchActive = headerSearch.trim() !== '';
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setIsHeaderSearchOpen(false);
+                      } else if ((e.key === 'Enter' || e.key === 'Tab') && isHeaderSearchActive && firstHeaderMatch) {
                         e.preventDefault();
                         handlePartySelect(firstHeaderMatch);
                       } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
                         setIsHeaderSearchOpen(true);
                         setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
                       } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
                         setHighlightedIndex(p => Math.max(p-1, 0)); 
-                      } else if (e.key === 'Enter' && filteredHeaderParties.length > 0) {
+                      } else if (e.key === 'Enter' && isHeaderSearchActive && filteredHeaderParties.length > 0) {
                         e.preventDefault();
                         handlePartySelect(filteredHeaderParties[highlightedIndex]);
                       }
@@ -729,7 +739,7 @@ const LedgerView = () => {
                         <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
                         {firstLinkedMatch && (
                           <div className="absolute inset-0 pl-11 pr-8 py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
-                            <span className="text-transparent">{linkedSearch}</span>
+                            <span className="text-transparent">{firstLinkedMatch.party_name.slice(0, linkedSearch.length)}</span>
                             <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
                               {firstLinkedMatch.party_name.slice(linkedSearch.length)}
                               <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[9px] text-blue-500 font-black shadow-xs">TAB</kbd>
@@ -741,19 +751,32 @@ const LedgerView = () => {
                           placeholder="Search Party..." 
                           className="w-full pl-11 pr-8 py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10" 
                           value={linkedSearch} 
-                          onChange={(e) => { setLinkedSearch(e.target.value); setIsLinkedSearchOpen(true); setHighlightedIndex(0); }} 
+                          onChange={(e) => { 
+                            const val = e.target.value;
+                            setLinkedSearch(val); 
+                            setIsLinkedSearchOpen(true); 
+                            setHighlightedIndex(0); 
+                            if (linkedParty && val !== linkedParty.party_name) {
+                              setLinkedParty(null);
+                            }
+                          }} 
                           onClick={() => setIsLinkedSearchOpen(true)} 
                           onKeyDown={(e) => { 
-                            if (e.key === 'ArrowDown') { 
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setIsLinkedSearchOpen(false);
+                            } else if (e.key === 'ArrowDown') { 
+                              e.preventDefault();
                               setIsLinkedSearchOpen(true); 
                               setHighlightedIndex(p => Math.min(p+1, filteredLinkedParties.length-1)); 
                             } else if (e.key === 'ArrowUp') {
+                              e.preventDefault();
                               setHighlightedIndex(p => Math.max(p-1, 0)); 
                             } else if (e.key === 'Enter' || e.key === 'Tab') {
-                              if (firstLinkedMatch) {
+                              if (isSearchActive && firstLinkedMatch) {
                                 e.preventDefault();
                                 handleSelectLinkedParty(firstLinkedMatch);
-                              } else if (filteredLinkedParties.length > 0) {
+                              } else if (isSearchActive && filteredLinkedParties.length > 0) {
                                 e.preventDefault();
                                 handleSelectLinkedParty(filteredLinkedParties[highlightedIndex]);
                               } else if (linkedParty) {
