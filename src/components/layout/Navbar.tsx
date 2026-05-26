@@ -92,10 +92,8 @@ const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Logo - Uses Dynamic Company Name */}
-          <Link to="/" className="flex items-center gap-2 group">
-            <div className="bg-blue-600 p-1.5 rounded-lg group-hover:bg-blue-700 transition-colors">
-              <img src="/logo.png" alt="Logo" className="w-6 h-6 object-contain" />
-            </div>
+          <Link to="/" className="flex items-center gap-2.5 group">
+            <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain transition-transform duration-200 group-hover:scale-105" />
             <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white hidden sm:block">
               {displayCompanyName}
             </span>

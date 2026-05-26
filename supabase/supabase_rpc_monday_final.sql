@@ -14,6 +14,9 @@ declare
   v_credit numeric;
   v_debit numeric;
 begin
+  -- Enable transaction-local lock bypass
+  perform set_config('app.bypass_monday_final_lock', 'true', true);
+
   -- Calculate Credit/Debit based on closing balance
   v_tns_type := case when p_closing_balance >= 0 then 'CR' else 'DR' end;
   v_credit := case when p_closing_balance >= 0 then p_closing_balance else 0 end;
@@ -24,13 +27,12 @@ begin
   values (gen_random_uuid(), p_party_id, p_remarks, v_tns_type, v_credit, v_debit, p_closing_balance, true, false, p_user_id)
   returning id into v_settlement_id;
 
-  -- 2. Archive all old active records for this party (excluding settlement records)
+  -- 2. Archive all old active records for this party (including previous settlement records)
   -- Security Definer bypasses RLS, so even old records without a user_id will be successfully archived.
   update public.transactions
   set is_finalized = true, settlement_id = v_settlement_id
   where party_id = p_party_id 
     and id != v_settlement_id 
-    and (is_settlement = false or is_settlement is null)
     and (is_finalized = false or is_finalized is null);
 
   -- 3. Update the Party status

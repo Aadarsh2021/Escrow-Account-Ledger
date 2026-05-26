@@ -5,6 +5,15 @@
 create or replace function public.check_transaction_lock()
 returns trigger as $$
 begin
+  -- If local session bypass is active, let it pass
+  if current_setting('app.bypass_monday_final_lock', true) = 'true' then
+    if (TG_OP = 'DELETE') then
+      return old;
+    else
+      return new;
+    end if;
+  end if;
+
   if (TG_OP = 'UPDATE') then
     if (old.is_settlement = true) then
       raise exception 'Monday Final settlement records cannot be modified once created.';

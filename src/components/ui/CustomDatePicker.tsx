@@ -5,12 +5,14 @@ interface CustomDatePickerProps {
   label: string;
   value: string;
   onChange: (val: string) => void;
+  align?: 'top' | 'bottom';
 }
 
 export const CustomDatePicker = ({ 
   label, 
   value, 
-  onChange 
+  onChange,
+  align = 'bottom'
 }: CustomDatePickerProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -126,7 +128,11 @@ export const CustomDatePicker = ({
       </div>
 
       {isOpen && (
-        <div className="absolute left-0 right-0 mt-2 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-[160] animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className={`absolute left-0 right-0 p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-[160] animate-in fade-in duration-200 ${
+          align === 'top' 
+            ? 'bottom-full mb-2 slide-in-from-bottom-2' 
+            : 'top-full mt-2 slide-in-from-top-2'
+        }`}>
           {/* Header */}
           <div className="flex items-center justify-between mb-4 gap-2">
             <button 

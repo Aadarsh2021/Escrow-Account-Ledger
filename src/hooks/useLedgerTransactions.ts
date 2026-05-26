@@ -21,6 +21,7 @@ export interface Transaction {
   balance: number;
   linked_transaction_id?: string;
   partner_party_name?: string;
+  partner_system_type?: 'normal' | 'commission' | 'company';
   is_settlement?: boolean;
   is_finalized?: boolean;
   settlement_id?: string;
@@ -115,16 +116,19 @@ export const useLedgerTransactions = ({
           .neq('party_id', partyId);
         
         if (partnerData) {
-          const partnerMap = new Map<string, string>();
+          const partnerNameMap = new Map<string, string>();
+          const partnerTypeMap = new Map<string, string>();
           partnerData.forEach((p: any) => {
-            if (p.parties?.system_type !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
-              partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+            if (p.parties?.system_type !== 'commission' || !partnerNameMap.has(p.linked_transaction_id)) {
+              partnerNameMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+              partnerTypeMap.set(p.linked_transaction_id, p.parties?.system_type || 'normal');
             }
           });
           
           currentTns.forEach(t => {
             if (t.linked_transaction_id) {
-              t.partner_party_name = partnerMap.get(t.linked_transaction_id);
+              t.partner_party_name = partnerNameMap.get(t.linked_transaction_id);
+              t.partner_system_type = partnerTypeMap.get(t.linked_transaction_id) as any;
             }
           });
         }
@@ -160,16 +164,19 @@ export const useLedgerTransactions = ({
           .neq('party_id', partyId);
         
         if (partnerData) {
-          const partnerMap = new Map<string, string>();
+          const partnerNameMap = new Map<string, string>();
+          const partnerTypeMap = new Map<string, string>();
           partnerData.forEach((p: any) => {
-            if (p.parties?.system_type !== 'commission' || !partnerMap.has(p.linked_transaction_id)) {
-              partnerMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+            if (p.parties?.system_type !== 'commission' || !partnerNameMap.has(p.linked_transaction_id)) {
+              partnerNameMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
+              partnerTypeMap.set(p.linked_transaction_id, p.parties?.system_type || 'normal');
             }
           });
           
           currentTns.forEach(t => {
             if (t.linked_transaction_id) {
-              t.partner_party_name = partnerMap.get(t.linked_transaction_id);
+              t.partner_party_name = partnerNameMap.get(t.linked_transaction_id);
+              t.partner_system_type = partnerTypeMap.get(t.linked_transaction_id) as any;
             }
           });
         }
@@ -599,11 +606,11 @@ export const useLedgerTransactions = ({
     setIsEditLinkedSearchOpen(false);
     if (party.system_type === 'commission' && selectedParty) {
       const isTake = selectedParty.status === 'take';
-      const lastCommIdx = [...transactions].reverse().findIndex(t => t.remarks?.toUpperCase() === 'COMMISSION');
+      const lastCommIdx = [...transactions].reverse().findIndex(t => t.partner_system_type === 'commission');
       const uncommissionedTns = lastCommIdx === -1 
         ? transactions 
         : transactions.slice(transactions.length - lastCommIdx);
-      const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
+      const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.partner_system_type !== 'commission');
       
       let totalVolume = 0;
       if (isTake) {
@@ -650,17 +657,23 @@ export const useLedgerTransactions = ({
         amount: `${amountSign}${calculatedComm.toFixed(2)}`,
         remarks: 'COMMISSION'
       }));
+    } else {
+      setEditFormData(prev => ({
+        ...prev,
+        amount: prev.remarks === 'COMMISSION' ? '' : prev.amount,
+        remarks: prev.remarks === 'COMMISSION' ? '' : prev.remarks
+      }));
     }
   };
 
   const calculateCommission = async () => {
     if (!selectedParty) return { amount: '', remarks: '' };
     const isTake = selectedParty.status === 'take';
-    const lastCommIdx = [...transactions].reverse().findIndex(t => t.remarks?.toUpperCase() === 'COMMISSION');
+    const lastCommIdx = [...transactions].reverse().findIndex(t => t.partner_system_type === 'commission');
     const uncommissionedTns = lastCommIdx === -1 
       ? transactions 
       : transactions.slice(transactions.length - lastCommIdx);
-    const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.remarks?.toUpperCase() !== 'COMMISSION');
+    const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.partner_system_type !== 'commission');
     
     let totalVolume = 0;
     if (isTake) {

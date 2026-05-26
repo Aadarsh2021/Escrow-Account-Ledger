@@ -28,13 +28,20 @@ export const DcReportModal = ({
 }: DcReportModalProps) => {
   if (!isOpen) return null;
 
+  const getAmountClass = (val: number) => {
+    const formatted = val.toLocaleString();
+    if (formatted.length > 14) return 'text-[9px] sm:text-[10px] md:text-[11px]';
+    if (formatted.length > 10) return 'text-[11px] sm:text-xs md:text-sm';
+    return 'text-xs sm:text-sm md:text-base';
+  };
+
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
       <div 
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
         onClick={onClose} 
       />
-      <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-8 overflow-visible animate-in zoom-in-95 duration-200">
+      <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl p-6 overflow-visible animate-in zoom-in-95 duration-200">
         <button 
           onClick={onClose} 
           className="absolute top-6 right-6 p-2 bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-white rounded-full transition-all"
@@ -56,6 +63,7 @@ export const DcReportModal = ({
               label="To Date" 
               value={dcToDate} 
               onChange={setDcToDate} 
+              align="top"
             />
             <button 
               onClick={fetchDcReport}
@@ -72,25 +80,32 @@ export const DcReportModal = ({
               Period: <span className="text-slate-800 dark:text-slate-200 font-black">{dcFromDate}</span> to <span className="text-slate-800 dark:text-slate-200 font-black">{dcToDate}</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 p-5 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 relative text-center divide-x divide-slate-200 dark:divide-slate-800">
+            <div className="grid grid-cols-3 gap-1.5 p-4 bg-slate-50 dark:bg-slate-950 rounded-3xl border border-slate-200 dark:border-slate-800 relative text-center divide-x divide-slate-200 dark:divide-slate-800">
               {isDcLoading && (
-                <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-2xl flex items-center justify-center z-10">
+                <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-3xl flex items-center justify-center z-10">
                   <RefreshCcw className="w-6 h-6 animate-spin text-blue-600" />
                 </div>
               )}
-              <div className="flex flex-col items-center justify-center px-2">
-                <span className="text-[10px] font-black text-emerald-600/70 uppercase tracking-widest mb-1.5">Total Credit</span>
-                <span className="text-lg md:text-xl font-black text-emerald-600">₹{(dcReportData?.credit || 0).toLocaleString()}</span>
+              
+              <div className="flex flex-col items-center justify-center px-1">
+                <span className="text-[9px] sm:text-[10px] font-black text-emerald-600/70 uppercase tracking-wider mb-1">Total Credit</span>
+                <span className={`font-black text-emerald-600 break-all ${getAmountClass(dcReportData?.credit || 0)}`}>
+                  ₹{(dcReportData?.credit || 0).toLocaleString()}
+                </span>
               </div>
-              <div className="flex flex-col items-center justify-center px-2">
-                <span className="text-[10px] font-black text-rose-600/70 uppercase tracking-widest mb-1.5">Total Debit</span>
-                <span className="text-lg md:text-xl font-black text-rose-600">₹{(dcReportData?.debit || 0).toLocaleString()}</span>
+              
+              <div className="flex flex-col items-center justify-center px-1">
+                <span className="text-[9px] sm:text-[10px] font-black text-rose-600/70 uppercase tracking-wider mb-1">Total Debit</span>
+                <span className={`font-black text-rose-600 break-all ${getAmountClass(dcReportData?.debit || 0)}`}>
+                  ₹{(dcReportData?.debit || 0).toLocaleString()}
+                </span>
               </div>
-              <div className="flex flex-col items-center justify-center px-2">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Net Balance</span>
-                <span className={`text-lg md:text-xl font-black flex items-baseline gap-1 ${(dcReportData?.balance || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  ₹{Math.abs(dcReportData?.balance || 0).toLocaleString()} 
-                  <span className="text-xs font-bold opacity-80">{(dcReportData?.balance || 0) >= 0 ? '(CR)' : '(DR)'}</span>
+              
+              <div className="flex flex-col items-center justify-center px-1">
+                <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Net Balance</span>
+                <span className={`font-black flex flex-wrap items-baseline justify-center gap-0.5 ${(dcReportData?.balance || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'} ${getAmountClass(Math.abs(dcReportData?.balance || 0))}`}>
+                  <span className="break-all">₹{Math.abs(dcReportData?.balance || 0).toLocaleString()}</span>
+                  <span className="text-[9px] sm:text-xs font-bold opacity-80">{(dcReportData?.balance || 0) >= 0 ? '(CR)' : '(DR)'}</span>
                 </span>
               </div>
             </div>

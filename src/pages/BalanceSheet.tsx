@@ -162,6 +162,9 @@ const BalanceSheet = () => {
   // Zero Balance Pagination
   const totalZeroPages = Math.ceil(zeroParties.length / ITEMS_PER_PAGE_SHEET);
   const paginatedZero = zeroParties.slice((zeroPage - 1) * ITEMS_PER_PAGE_SHEET, zeroPage * ITEMS_PER_PAGE_SHEET);
+  const halfZero = Math.ceil(paginatedZero.length / 2);
+  const zeroCol1 = paginatedZero.slice(0, halfZero);
+  const zeroCol2 = paginatedZero.slice(halfZero);
 
   // Sum calculation of all credit and debit accounts (always over entire dataset!)
   const totalCredit = creditParties.reduce((sum, p) => sum + p.balance, 0);
@@ -583,26 +586,75 @@ const BalanceSheet = () => {
             </span>
           </div>
 
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-1.5 max-h-72 overflow-y-auto pr-2">
-              {paginatedZero.map(p => (
-                <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-100/50 dark:border-slate-800/40 hover:bg-slate-50/50 dark:hover:bg-slate-950/20 px-2 rounded-lg transition-all">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className="text-[10px] font-black text-slate-500 dark:text-slate-400 w-10 shrink-0">SR {p.sr_no}</span>
-                    <span className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate min-w-0" title={p.party_name}>
-                      {p.party_name}
-                    </span>
-                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded shrink-0 ${
-                      p.status === 'take' 
-                        ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100/40 dark:border-blue-900/30' 
-                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-100/40 dark:border-emerald-900/30'
-                    }`}>
-                      {p.status}
-                    </span>
-                  </div>
-                  <span className="text-xs font-extrabold text-slate-600 dark:text-slate-300 shrink-0">₹ 0</span>
-                </div>
-              ))}
+          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800">
+            {/* Table Column 1 */}
+            <div className="pr-0 md:pr-2 pb-4 md:pb-0">
+              <table className="w-full text-left text-xs font-bold">
+                <thead>
+                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                    <th className="py-2 w-12">SR</th>
+                    <th className="py-2">Name</th>
+                    <th className="py-2 text-center">Status</th>
+                    <th className="py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
+                  {zeroCol1.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                      <td className="py-2 text-slate-400 dark:text-slate-500 font-bold">{p.sr_no}</td>
+                      <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                        {p.party_name}
+                      </td>
+                      <td className="py-2 text-center">
+                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30 dark:border-emerald-900/30">
+                          Settled
+                        </span>
+                      </td>
+                      <td className="py-2 text-right text-slate-400 dark:text-slate-500">₹ 0</td>
+                    </tr>
+                  ))}
+                  {zeroCol1.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Table Column 2 */}
+            <div className="pl-0 md:pl-4 pt-4 md:pt-0">
+              <table className="w-full text-left text-xs font-bold">
+                <thead>
+                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                    <th className="py-2 w-12">SR</th>
+                    <th className="py-2">Name</th>
+                    <th className="py-2 text-center">Status</th>
+                    <th className="py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
+                  {zeroCol2.map(p => (
+                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                      <td className="py-2 text-slate-400 dark:text-slate-500 font-bold">{p.sr_no}</td>
+                      <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                        {p.party_name}
+                      </td>
+                      <td className="py-2 text-center">
+                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30 dark:border-emerald-900/30">
+                          Settled
+                        </span>
+                      </td>
+                      <td className="py-2 text-right text-slate-400 dark:text-slate-500">₹ 0</td>
+                    </tr>
+                  ))}
+                  {zeroCol2.length === 0 && zeroCol1.length > 0 && (
+                    <tr>
+                      <td colSpan={4} className="py-2 text-center text-slate-300 dark:text-slate-650 italic">-</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 

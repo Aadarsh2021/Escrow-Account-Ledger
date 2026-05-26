@@ -18,7 +18,8 @@ import {
   XCircle,
   CheckCircle2,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Check
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -64,6 +65,62 @@ const LedgerView = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isOldRecordsView, setIsOldRecordsView] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  
+  // Reconciled/Checked transactions checklist state
+  const [checkedTnsIds, setCheckedTnsIds] = useState<Set<string>>(new Set());
+
+  // Load checked transaction IDs for the selected party
+  useEffect(() => {
+    if (selectedParty) {
+      try {
+        const saved = localStorage.getItem(`checked_tns_${selectedParty.id}`);
+        setCheckedTnsIds(saved ? new Set(JSON.parse(saved)) : new Set());
+      } catch (err) {
+        console.error('Error loading checked transactions:', err);
+        setCheckedTnsIds(new Set());
+      }
+    } else {
+      setCheckedTnsIds(new Set());
+    }
+  }, [selectedParty]);
+
+  const toggleCheckedTns = (tnsId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const newChecked = new Set(checkedTnsIds);
+    if (newChecked.has(tnsId)) {
+      newChecked.delete(tnsId);
+    } else {
+      newChecked.add(tnsId);
+    }
+    setCheckedTnsIds(newChecked);
+    if (selectedParty) {
+      try {
+        localStorage.setItem(`checked_tns_${selectedParty.id}`, JSON.stringify(Array.from(newChecked)));
+      } catch (err) {
+        console.error('Error saving checked transactions:', err);
+      }
+    }
+  };
+
+  const toggleSelectAllChecked = () => {
+    if (checkedTnsIds.size === transactions.length) {
+      setCheckedTnsIds(new Set());
+      if (selectedParty) {
+        localStorage.removeItem(`checked_tns_${selectedParty.id}`);
+      }
+    } else {
+      const newChecked = new Set<string>();
+      transactions.forEach(t => newChecked.add(t.id));
+      setCheckedTnsIds(newChecked);
+      if (selectedParty) {
+        try {
+          localStorage.setItem(`checked_tns_${selectedParty.id}`, JSON.stringify(Array.from(newChecked)));
+        } catch (err) {
+          console.error('Error saving checked transactions:', err);
+        }
+      }
+    }
+  };
   
   // Entry Form inputs
   const [amount, setAmount] = useState('');
@@ -328,6 +385,9 @@ const LedgerView = () => {
       const result = await calculateCommission();
       setAmount(result.amount);
       setRemarks(result.remarks);
+    } else {
+      setAmount(prev => (remarks === 'COMMISSION' ? '' : prev));
+      setRemarks(prev => (prev === 'COMMISSION' ? '' : prev));
     }
     amountInputRef.current?.focus();
   };
@@ -688,7 +748,7 @@ const LedgerView = () => {
                   <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
                       <tr>
-                        <th className="px-6 py-3 text-center">
+                        <th className="px-6 py-3 text-center w-12">
                           <div onClick={toggleSelectAllTns} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>
                             {selectedTnsIds.size === transactions.length && transactions.length > 0 && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}
                           </div>
@@ -697,6 +757,11 @@ const LedgerView = () => {
                         <th className="px-6 py-3">Particulars / Remarks</th>
                         <th className="px-6 py-3 text-right">Credit</th>
                         <th className="px-6 py-3 text-right">Debit</th>
+                        <th className="px-6 py-3 text-center w-12">
+                          <div onClick={(e) => { e.stopPropagation(); toggleSelectAllChecked(); }} className={`w-4 h-4 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 dark:border-slate-700'}`}>
+                            {checkedTnsIds.size === transactions.length && transactions.length > 0 && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                          </div>
+                        </th>
                         <th className="px-6 py-3 text-right">Balance</th>
                       </tr>
                     </thead>
@@ -723,6 +788,11 @@ const LedgerView = () => {
                           </td>
                           <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${t.credit.toLocaleString()}` : '-'}</td>
                           <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-400 font-bold'}`}>{t.debit > 0 ? `₹ ${t.debit.toLocaleString()}` : '-'}</td>
+                          <td className="px-6 py-3 text-center w-12">
+                            <div onClick={(e) => toggleCheckedTns(t.id, e)} className={`w-5 h-5 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.has(t.id) ? (selectedTnsIds.has(t.id) ? 'bg-white border-white text-blue-600' : 'bg-emerald-500 border-emerald-500 text-white') : (selectedTnsIds.has(t.id) ? 'border-blue-200 text-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
+                              {checkedTnsIds.has(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
+                          </td>
                           <td className={`px-6 py-3 text-right font-black ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-400')}`}>₹ {Math.abs(t.balance).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
                         </tr>
                       ))}
@@ -861,10 +931,7 @@ const LedgerView = () => {
                 </button>
               ))}
               <div className="hidden lg:block lg:flex-grow"></div>
-              <div className="w-full lg:w-auto p-3 lg:p-4 bg-slate-50 dark:bg-slate-950 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center flex lg:flex-col justify-between lg:justify-center items-center">
-                <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest lg:mb-1">Status</p>
-                <div className="text-sm font-black text-slate-900 dark:text-white">{selectedTnsIds.size > 0 ? `${selectedTnsIds.size} Selected` : 'None'}</div>
-              </div>
+
             </div>
           </div>
         </div>
