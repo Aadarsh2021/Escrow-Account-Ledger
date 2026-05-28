@@ -1,4 +1,4 @@
-import { Mail, Phone, MapPin } from 'lucide-react';
+import { Mail } from 'lucide-react';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -63,14 +63,6 @@ const Footer = () => {
                 <Mail className="w-4 h-4 text-blue-500" />
                 <a href="mailto:support@escrowbms.com" className="hover:text-blue-400 transition-colors">support@escrowbms.com</a>
               </li>
-              <li className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-blue-500" />
-                <span>+91 93280 28207</span>
-              </li>
-              <li className="flex items-start gap-3">
-                <MapPin className="w-4 h-4 text-blue-500 mt-0.5" />
-                <span>Surat, Gujarat</span>
-              </li>
             </ul>
           </div>
         </div>
@@ -85,10 +77,6 @@ const Footer = () => {
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Terms</a>
             <a href="#" className="hover:text-white transition-colors">Refunds</a>
-          </div>
-
-          <div className="font-semibold text-white/50">
-            Managed by <span className="text-blue-500/80">ASH-TECH SOLUTIONS</span>
           </div>
         </div>
       </div>
