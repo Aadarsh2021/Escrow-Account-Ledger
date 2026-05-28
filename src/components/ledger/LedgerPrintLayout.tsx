@@ -6,6 +6,10 @@ interface LedgerPrintLayoutProps {
   printTotalCredit: number;
   printTotalDebit: number;
   printFinalBalance: number;
+  printFilterType: 'all' | 'date';
+  printStartDate: string;
+  printEndDate: string;
+  printOpeningBalance: number;
 }
 
 export const LedgerPrintLayout = ({
@@ -13,7 +17,11 @@ export const LedgerPrintLayout = ({
   printTransactions,
   printTotalCredit,
   printTotalDebit,
-  printFinalBalance
+  printFinalBalance,
+  printFilterType,
+  printStartDate,
+  printEndDate,
+  printOpeningBalance
 }: LedgerPrintLayoutProps) => {
   return (
     <div className="hidden print:block bg-white text-black p-4 min-h-screen">
@@ -79,7 +87,9 @@ export const LedgerPrintLayout = ({
         <h2 className="text-xl font-extrabold text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-1.5 inline-block px-4">
           Account Statement
         </h2>
-        <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">Complete History (Start to Finish)</p>
+        <p className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wider">
+          {printFilterType === 'all' ? 'Complete History (Start to Finish)' : 'Statement Period Summary'}
+        </p>
       </div>
 
       {/* Party and Statement Metadata Grid */}
@@ -96,7 +106,10 @@ export const LedgerPrintLayout = ({
         <div className="space-y-1 text-right text-xs text-slate-600 font-medium">
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Statement Details</p>
           <p><span className="font-bold text-slate-800">Generated On:</span> {new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}</p>
-          <p><span className="font-bold text-slate-800">Period:</span> Full History (Start to Finish)</p>
+          <p><span className="font-bold text-slate-800">Period:</span> {printFilterType === 'all' ? 'Full History (Start to Finish)' : `${new Date(printStartDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})} to ${new Date(printEndDate).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'})}`}</p>
+          {printFilterType === 'date' && (
+            <p><span className="font-bold text-slate-800">Opening Balance:</span> ₹ {Math.round(Math.abs(printOpeningBalance)).toLocaleString('en-IN')} {printOpeningBalance >= 0 ? 'CR' : 'DR'}</p>
+          )}
           <p><span className="font-bold text-slate-800">Records Shown:</span> {printTransactions.length} Entries</p>
         </div>
       </div>
@@ -105,16 +118,16 @@ export const LedgerPrintLayout = ({
       <div className="grid grid-cols-3 gap-1 bg-slate-50 rounded-2xl border border-slate-200 text-center divide-x divide-slate-200 p-4 mb-6">
         <div className="flex flex-col items-center justify-center">
           <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-1">Total Credit</span>
-          <span className="text-base font-black text-emerald-600">₹ {printTotalCredit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-base font-black text-emerald-600">₹ {Math.round(printTotalCredit).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex flex-col items-center justify-center">
           <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest mb-1">Total Debit</span>
-          <span className="text-base font-black text-rose-600">₹ {printTotalDebit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          <span className="text-base font-black text-rose-600">₹ {Math.round(printTotalDebit).toLocaleString('en-IN')}</span>
         </div>
         <div className="flex flex-col items-center justify-center">
           <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1">Statement Balance</span>
           <span className={`text-base font-black ${printFinalBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-            ₹ {Math.abs(printFinalBalance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {printFinalBalance >= 0 ? 'CR' : 'DR'}
+            ₹ {Math.round(Math.abs(printFinalBalance)).toLocaleString('en-IN')} {printFinalBalance >= 0 ? 'CR' : 'DR'}
           </span>
         </div>
       </div>
@@ -136,6 +149,21 @@ export const LedgerPrintLayout = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 font-medium">
+            {printFilterType === 'date' && (
+              <tr className="no-page-break bg-slate-50/30">
+                <td className="text-center text-slate-500 font-mono text-[9px]">
+                  {new Date(printStartDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                </td>
+                <td className="font-black text-slate-500 text-[10px] uppercase tracking-wider">
+                  OPENING BALANCE B/F
+                </td>
+                <td className="text-right text-slate-400 font-bold">-</td>
+                <td className="text-right text-slate-400 font-bold">-</td>
+                <td className={`text-right font-black ${printOpeningBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  ₹ {Math.round(Math.abs(printOpeningBalance)).toLocaleString('en-IN')} {printOpeningBalance >= 0 ? 'Cr' : 'Dr'}
+                </td>
+              </tr>
+            )}
             {printTransactions.map((t) => (
               <tr key={t.id} className="no-page-break">
                 <td className="text-center text-slate-500 font-mono text-[9px]">
@@ -158,13 +186,13 @@ export const LedgerPrintLayout = ({
                   )}
                 </td>
                 <td className="text-right text-emerald-600 font-bold">
-                  {!t.is_settlement && t.credit > 0 ? `₹ ${t.credit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                  {!t.is_settlement && t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString('en-IN')}` : '-'}
                 </td>
                 <td className="text-right text-rose-600 font-bold">
-                  {!t.is_settlement && t.debit > 0 ? `₹ ${t.debit.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-'}
+                  {!t.is_settlement && t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString('en-IN')}` : '-'}
                 </td>
                 <td className={`text-right font-black ${t.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                  ₹ {Math.abs(t.balance).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {t.balance >= 0 ? 'Cr' : 'Dr'}
+                  ₹ {Math.round(Math.abs(t.balance)).toLocaleString('en-IN')} {t.balance >= 0 ? 'Cr' : 'Dr'}
                 </td>
               </tr>
             ))}

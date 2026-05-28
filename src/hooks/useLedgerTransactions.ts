@@ -216,12 +216,14 @@ export const useLedgerTransactions = ({
       }
 
       if (updates.length > 0) {
-        for (const update of updates) {
-          await supabase
-            .from('transactions')
-            .update({ balance: update.balance })
-            .eq('id', update.id);
-        }
+        await Promise.all(
+          updates.map(update =>
+            supabase
+              .from('transactions')
+              .update({ balance: update.balance })
+              .eq('id', update.id)
+          )
+        );
       }
     } catch (err) {
       console.error('Error recalculating balances:', err);
@@ -304,13 +306,15 @@ export const useLedgerTransactions = ({
         try {
           const partyIds = Array.from(selectedPartyIds);
           
-          for (const pId of partyIds) {
-            const { data: activeTns } = await supabase
+          await Promise.all(partyIds.map(async (pId) => {
+            const { data: activeTns, error: fetchErr } = await supabase
               .from('transactions')
               .select('*')
               .eq('party_id', pId)
               .neq('is_finalized', true)
               .order('transaction_date', { ascending: true });
+
+            if (fetchErr) throw fetchErr;
 
             if (activeTns && activeTns.length > 0) {
               const closingBal = activeTns[activeTns.length - 1].balance;
@@ -331,7 +335,7 @@ export const useLedgerTransactions = ({
 
               if (updateErr) throw updateErr;
             }
-          }
+          }));
           
           setSelectedPartyIds(new Set());
           await fetchParties();
@@ -385,13 +389,14 @@ export const useLedgerTransactions = ({
             
           if (error) throw error;
 
-          for (const pId of affectedPartyIds) {
-            await recalculateBalances(pId);
-          }
+          await Promise.all(Array.from(affectedPartyIds).map(pId => recalculateBalances(pId)));
 
           setSelectedTnsIds(new Set());
-          await fetchParties();
-          if (selectedParty) fetchTransactions(selectedParty.id);
+          await Promise.all([
+            fetchParties(),
+            selectedParty ? fetchTransactions(selectedParty.id) : Promise.resolve(),
+            selectedParty ? fetchAllTransactionsForPrint(selectedParty.id) : Promise.resolve()
+          ]);
         } catch (err) { 
           console.error(err); 
           alert("Failed to delete records. " + (err as any).message);
@@ -403,12 +408,13 @@ export const useLedgerTransactions = ({
   };
 
   const saveModification = async () => {
-    if (selectedTnsIds.size !== 1 || !selectedParty || !editFormData.linkedParty || !authUser) return;
+    if (selectedTnsIds.size !== 1 || !selectedParty || !editFormData.linkedParty || !authUser || submitting) return;
     const tnsId = Array.from(selectedTnsIds)[0];
     const tnsA = transactions.find(t => t.id === tnsId);
     if (!tnsA) return;
 
-    const numAmt = parseFloat(editFormData.amount);
+    const parsedAmt = parseFloat(editFormData.amount);
+    const numAmt = Math.sign(parsedAmt) * Math.round(Math.abs(parsedAmt));
     if (isNaN(numAmt) || numAmt === 0) {
       alert('Please enter a valid amount.');
       return;
@@ -480,15 +486,15 @@ export const useLedgerTransactions = ({
 
       if (insertErr) throw insertErr;
 
-      for (const pId of affectedPartyIds) {
-        await recalculateBalances(pId);
-      }
+      await Promise.all(Array.from(affectedPartyIds).map(pId => recalculateBalances(pId)));
 
       setIsEditModalOpen(false);
       setSelectedTnsIds(new Set());
-      await fetchParties();
-      await fetchTransactions(selectedParty.id);
-      await fetchAllTransactionsForPrint(selectedParty.id);
+      await Promise.all([
+        fetchParties(),
+        fetchTransactions(selectedParty.id),
+        fetchAllTransactionsForPrint(selectedParty.id)
+      ]);
     } catch (err) {
       console.error(err);
       alert('Modification failed: ' + ((err as any).message || 'Unknown database error'));
@@ -534,7 +540,7 @@ export const useLedgerTransactions = ({
   };
 
   const handleModifyTns = async () => {
-    if (selectedTnsIds.size !== 1 || isOldRecordsView || !selectedParty) return;
+    if (selectedTnsIds.size !== 1 || isOldRecordsView || !selectedParty || submitting) return;
     const tnsId = Array.from(selectedTnsIds)[0];
     const tnsA = transactions.find(t => t.id === tnsId);
     if (!tnsA) return;
@@ -598,6 +604,7 @@ export const useLedgerTransactions = ({
   };
 
   const selectEditLinkedParty = async (party: Party) => {
+    const prevLinkedParty = editFormData.linkedParty;
     setEditFormData(prev => ({
       ...prev,
       linkedParty: party,
@@ -649,20 +656,22 @@ export const useLedgerTransactions = ({
         }
       }
       
-      const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
+      const calculatedComm = Math.round((totalVolume * selectedParty.commission_rate) / 100);
       
       const amountSign = isTake ? '-' : '';
       setEditFormData(prev => ({
         ...prev,
-        amount: `${amountSign}${calculatedComm.toFixed(2)}`,
-        remarks: 'COMMISSION'
+        amount: `${amountSign}${calculatedComm}`,
+        remarks: ''
       }));
     } else {
-      setEditFormData(prev => ({
-        ...prev,
-        amount: prev.remarks === 'COMMISSION' ? '' : prev.amount,
-        remarks: prev.remarks === 'COMMISSION' ? '' : prev.remarks
-      }));
+      if (prevLinkedParty?.system_type === 'commission') {
+        setEditFormData(prev => ({
+          ...prev,
+          amount: '',
+          remarks: ''
+        }));
+      }
     }
   };
 
@@ -712,18 +721,19 @@ export const useLedgerTransactions = ({
       }
     }
     
-    const calculatedComm = (totalVolume * selectedParty.commission_rate) / 100;
+    const calculatedComm = Math.round((totalVolume * selectedParty.commission_rate) / 100);
     const amountSign = isTake ? '-' : '';
     return {
-      amount: `${amountSign}${calculatedComm.toFixed(2)}`,
-      remarks: 'COMMISSION'
+      amount: `${amountSign}${calculatedComm}`,
+      remarks: ''
     };
   };
 
   const createTransactionEntry = async (amountVal: string, remarksVal: string, linkedPartyVal: Party) => {
     if (!selectedParty || !amountVal || parseFloat(amountVal) === 0 || !linkedPartyVal || !authUser) return false;
     setSubmitting(true);
-    const numAmt = parseFloat(amountVal);
+    const parsedAmt = parseFloat(amountVal);
+    const numAmt = Math.sign(parsedAmt) * Math.round(Math.abs(parsedAmt));
     const absAmt = Math.abs(numAmt);
     try {
       const firstPartyType = numAmt > 0 ? 'CR' : 'DR';
@@ -774,8 +784,10 @@ export const useLedgerTransactions = ({
       if (insertErr) throw insertErr;
 
       // Recalculate balances to ensure everything is perfect
-      await recalculateBalances(selectedParty.id);
-      await recalculateBalances(linkedPartyVal.id);
+      await Promise.all([
+        recalculateBalances(selectedParty.id),
+        recalculateBalances(linkedPartyVal.id)
+      ]);
       
       return true;
     } catch (err) { 

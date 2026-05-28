@@ -11,26 +11,27 @@ const Dashboard = () => {
     return localStorage.getItem('cached_dashboard_company') || '';
   });
   
+  const defaultStats = {
+    totalParties: 0,
+    todayEntries: 0,
+    overallBalance: 0,
+    todayVolume: 0,
+    totalCommission: 0,
+    pendingFinals: 0
+  };
+
   const [statsData, setStatsData] = useState(() => {
     try {
       const cached = localStorage.getItem('cached_dashboard_stats');
-      return cached ? JSON.parse(cached) : {
-        totalParties: 0,
-        todayEntries: 0,
-        overallBalance: 0,
-        todayVolume: 0,
-        totalCommission: 0,
-        pendingFinals: 0
-      };
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          return { ...defaultStats, ...parsed };
+        }
+      }
+      return defaultStats;
     } catch {
-      return {
-        totalParties: 0,
-        todayEntries: 0,
-        overallBalance: 0,
-        todayVolume: 0,
-        totalCommission: 0,
-        pendingFinals: 0
-      };
+      return defaultStats;
     }
   });
 
@@ -44,10 +45,10 @@ const Dashboard = () => {
   });
 
   useEffect(() => {
+    if (!user) return;
     let mounted = true;
     
     const fetchDashboardData = async () => {
-      if (!user) return;
       
       try {
         const today = new Date();
@@ -98,11 +99,11 @@ const Dashboard = () => {
         const pendingFinals = partiesData?.filter(p => p.monday_final !== true && p.monday_final !== 'true' && p.system_type === 'normal').length || 0;
 
         const todayEntries = todayTns?.length || 0;
-        const todayVolume = todayTns?.reduce((sum, t) => sum + Math.max(t.credit, t.debit), 0) || 0;
+        const todayVolume = Math.round(todayTns?.reduce((sum, t) => sum + Math.max(t.credit, t.debit), 0) || 0);
 
         // Calculate Commission (Balance of the commission system party)
         const commissionParty = allTns?.find((t: any) => t.parties?.system_type === 'commission');
-        const totalCommission = commissionParty ? commissionParty.balance : 0;
+        const totalCommission = commissionParty ? Math.round(commissionParty.balance) : 0;
 
         // Calculate Overall Balance
         const latestBalances = new Map();
@@ -119,7 +120,7 @@ const Dashboard = () => {
           const newStats = {
             totalParties,
             todayEntries,
-            overallBalance: totalBalance,
+            overallBalance: Math.round(totalBalance),
             todayVolume,
             totalCommission,
             pendingFinals
@@ -157,17 +158,17 @@ const Dashboard = () => {
 
 
   const stats = [
-    { name: 'Total Parties', value: statsData.totalParties.toString(), icon: <Users className="w-5 h-5" />, color: 'blue' },
-    { name: 'Today Entries', value: statsData.todayEntries.toString(), icon: <Activity className="w-5 h-5" />, color: 'green' },
+    { name: 'Total Parties', value: (statsData?.totalParties ?? 0).toString(), icon: <Users className="w-5 h-5" />, color: 'blue' },
+    { name: 'Today Entries', value: (statsData?.todayEntries ?? 0).toString(), icon: <Activity className="w-5 h-5" />, color: 'green' },
     { 
       name: 'Overall Balance', 
-      value: `₹ ${Math.abs(statsData.overallBalance).toLocaleString()} ${statsData.overallBalance >= 0 ? 'Cr' : 'Dr'}`, 
+      value: `₹ ${Math.abs(Math.round(statsData?.overallBalance ?? 0)).toLocaleString()} ${(statsData?.overallBalance ?? 0) >= 0 ? 'Cr' : 'Dr'}`, 
       icon: <TrendingUp className="w-5 h-5" />, 
-      color: statsData.overallBalance >= 0 ? 'emerald' : 'rose' 
+      color: (statsData?.overallBalance ?? 0) >= 0 ? 'emerald' : 'rose' 
     },
-    { name: "Today's Volume", value: `₹ ${statsData.todayVolume.toLocaleString()}`, icon: <Database className="w-5 h-5" />, color: 'orange' },
-    { name: 'Total Commission', value: `₹ ${Math.abs(statsData.totalCommission).toLocaleString()}`, icon: <BarChart3 className="w-5 h-5" />, color: 'indigo' },
-    { name: 'Pending Finals', value: statsData.pendingFinals.toString(), icon: <AlertCircle className="w-5 h-5" />, color: 'amber' },
+    { name: "Today's Volume", value: `₹ ${Math.round(statsData?.todayVolume ?? 0).toLocaleString()}`, icon: <Database className="w-5 h-5" />, color: 'orange' },
+    { name: 'Total Commission', value: `₹ ${Math.abs(Math.round(statsData?.totalCommission ?? 0)).toLocaleString()}`, icon: <BarChart3 className="w-5 h-5" />, color: 'indigo' },
+    { name: 'Pending Finals', value: (statsData?.pendingFinals ?? 0).toString(), icon: <AlertCircle className="w-5 h-5" />, color: 'amber' },
   ];
 
   const quickActions = [

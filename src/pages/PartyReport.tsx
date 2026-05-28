@@ -63,6 +63,145 @@ const PartyReport = () => {
   const [editFormData, setEditFormData] = useState<Partial<Party>>({});
   const [saving, setSaving] = useState(false);
 
+  // Checklist selection states
+  const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
+
+  // Bulk Edit Commission States
+  const [isBulkCommModalOpen, setIsBulkCommModalOpen] = useState(false);
+  const [bulkTakeCommRate, setBulkTakeCommRate] = useState('');
+  const [bulkGiveCommRate, setBulkGiveCommRate] = useState('');
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  const selectedPartiesList = parties.filter(p => selectedPartyIds.has(p.id));
+  const selectedTakeCount = selectedPartiesList.filter(p => p.status === 'take').length;
+  const selectedGiveCount = selectedPartiesList.filter(p => p.status === 'give').length;
+
+  const toggleSelectParty = (partyId: string) => {
+    const newSelected = new Set(selectedPartyIds);
+    if (newSelected.has(partyId)) {
+      newSelected.delete(partyId);
+    } else {
+      newSelected.add(partyId);
+    }
+    setSelectedPartyIds(newSelected);
+  };
+
+  const toggleSelectAllParties = () => {
+    const normalParties = paginatedParties.filter(p => p.system_type === 'normal');
+    const allSelected = normalParties.every(p => selectedPartyIds.has(p.id));
+
+    if (allSelected) {
+      const newSelected = new Set(selectedPartyIds);
+      normalParties.forEach(p => newSelected.delete(p.id));
+      setSelectedPartyIds(newSelected);
+    } else {
+      const newSelected = new Set(selectedPartyIds);
+      normalParties.forEach(p => newSelected.add(p.id));
+      setSelectedPartyIds(newSelected);
+    }
+  };
+
+  const handleBulkCommSave = async () => {
+    const takeRate = parseFloat(bulkTakeCommRate);
+    const giveRate = parseFloat(bulkGiveCommRate);
+
+    const isBulkAllMode = selectedPartyIds.size === 0;
+
+    const wantsTakeUpdate = bulkTakeCommRate.trim() !== '';
+    const wantsGiveUpdate = bulkGiveCommRate.trim() !== '';
+
+    if (wantsTakeUpdate && (isNaN(takeRate) || takeRate < 0)) {
+      alert('Please enter a valid rate for Take parties.');
+      return;
+    }
+    if (wantsGiveUpdate && (isNaN(giveRate) || giveRate < 0)) {
+      alert('Please enter a valid rate for Give parties.');
+      return;
+    }
+
+    if (!wantsTakeUpdate && !wantsGiveUpdate) {
+      alert('Please enter at least one commission rate to update.');
+      return;
+    }
+
+    setBulkSaving(true);
+    try {
+      if (isBulkAllMode) {
+        if (wantsTakeUpdate) {
+          const { error } = await supabase
+            .from('parties')
+            .update({ commission_rate: takeRate })
+            .eq('status', 'take')
+            .eq('system_type', 'normal');
+          if (error) throw error;
+        }
+
+        if (wantsGiveUpdate) {
+          const { error } = await supabase
+            .from('parties')
+            .update({ commission_rate: giveRate })
+            .eq('status', 'give')
+            .eq('system_type', 'normal');
+          if (error) throw error;
+        }
+
+        // Update local state for all normal parties
+        setParties(parties.map(p => {
+          if (p.system_type !== 'normal') return p;
+          let updatedParty = { ...p };
+          if (p.status === 'take' && wantsTakeUpdate) {
+            updatedParty.commission_rate = takeRate;
+          }
+          if (p.status === 'give' && wantsGiveUpdate) {
+            updatedParty.commission_rate = giveRate;
+          }
+          return updatedParty;
+        }));
+      } else {
+        const takeIds = selectedPartiesList.filter(p => p.status === 'take').map(p => p.id);
+        const giveIds = selectedPartiesList.filter(p => p.status === 'give').map(p => p.id);
+
+        if (takeIds.length > 0 && wantsTakeUpdate) {
+          const { error } = await supabase
+            .from('parties')
+            .update({ commission_rate: takeRate })
+            .in('id', takeIds);
+          if (error) throw error;
+        }
+
+        if (giveIds.length > 0 && wantsGiveUpdate) {
+          const { error } = await supabase
+            .from('parties')
+            .update({ commission_rate: giveRate })
+            .in('id', giveIds);
+          if (error) throw error;
+        }
+
+        // Update local state for selected parties
+        setParties(parties.map(p => {
+          if (!selectedPartyIds.has(p.id)) return p;
+          if (p.status === 'take' && wantsTakeUpdate) {
+            return { ...p, commission_rate: takeRate };
+          }
+          if (p.status === 'give' && wantsGiveUpdate) {
+            return { ...p, commission_rate: giveRate };
+          }
+          return p;
+        }));
+      }
+
+      setSelectedPartyIds(new Set());
+      setBulkTakeCommRate('');
+      setBulkGiveCommRate('');
+      setIsBulkCommModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update commission rates: ' + (err as any).message);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchParties();
 
@@ -88,7 +227,12 @@ const PartyReport = () => {
       } catch (e) {
         console.error('Error caching parties report:', e);
       }
-    } catch (err) { console.error(err); } finally { setLoading(false); }
+    } catch (err) { 
+      console.error(err); 
+      alert("Error fetching parties (Report): " + JSON.stringify(err));
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const handleEdit = (party: Party) => {
@@ -188,6 +332,14 @@ const PartyReport = () => {
         </div>
         
         <div className="flex items-center gap-3 w-full md:w-auto">
+          <button
+            type="button"
+            onClick={() => setIsBulkCommModalOpen(true)}
+            className="flex items-center gap-1.5 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 dark:shadow-none rounded-2xl font-bold text-sm transition-all whitespace-nowrap"
+          >
+            <Edit3 className="w-4 h-4" />
+            Bulk Commission {selectedPartyIds.size > 0 ? `(${selectedPartyIds.size})` : ''}
+          </button>
           <div className="relative w-full md:w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus-within:ring-4 focus-within:ring-emerald-600/10 focus-within:border-emerald-600 rounded-2xl transition-all flex items-center">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10" />
             {firstReportMatch && (
@@ -229,7 +381,23 @@ const PartyReport = () => {
           <table className="w-full text-left">
             <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800">
               <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                <th className="px-8 py-5">SR NO</th>
+                <th className="px-6 py-5 text-center w-12">
+                  <div 
+                    onClick={toggleSelectAllParties} 
+                    className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
+                      paginatedParties.filter(p => p.system_type === 'normal').length > 0 &&
+                      paginatedParties.filter(p => p.system_type === 'normal').every(p => selectedPartyIds.has(p.id))
+                        ? 'bg-emerald-600 border-emerald-600'
+                        : 'border-slate-300 dark:border-slate-700'
+                    }`}
+                  >
+                    {paginatedParties.filter(p => p.system_type === 'normal').length > 0 &&
+                     paginatedParties.filter(p => p.system_type === 'normal').every(p => selectedPartyIds.has(p.id)) && (
+                       <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>
+                     )}
+                  </div>
+                </th>
+                <th className="px-6 py-5">SR NO</th>
                 <th className="px-8 py-5">Party Name</th>
                 <th className="px-8 py-5">Status</th>
                 <th className="px-8 py-5 text-center">Monday Final</th>
@@ -239,8 +407,24 @@ const PartyReport = () => {
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-800 font-medium">
               {paginatedParties.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors">
-                  <td className="px-8 py-5 font-bold text-slate-400 dark:text-slate-500">{p.sr_no}</td>
+                <tr key={p.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors ${selectedPartyIds.has(p.id) ? 'bg-emerald-50/40 dark:bg-emerald-950/10' : ''}`}>
+                  <td className="px-6 py-5 text-center">
+                    {p.system_type === 'normal' ? (
+                      <div 
+                        onClick={() => toggleSelectParty(p.id)} 
+                        className={`w-5 h-5 rounded-lg border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
+                          selectedPartyIds.has(p.id) 
+                            ? 'bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-100 dark:shadow-none' 
+                            : 'border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        <div className={`w-2 h-2 bg-white rounded-sm transition-opacity ${selectedPartyIds.has(p.id) ? 'opacity-100' : 'opacity-0'}`}></div>
+                      </div>
+                    ) : (
+                      <div className="w-5 h-5 mx-auto" />
+                    )}
+                  </td>
+                  <td className="px-6 py-5 font-bold text-slate-400 dark:text-slate-500">{p.sr_no}</td>
                   <td className="px-8 py-5">
                     <div className="font-bold text-slate-900 dark:text-white text-lg">{p.party_name}</div>
                     {p.system_type !== 'normal' && <span className="text-[9px] bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-full uppercase font-black">System Account</span>}
@@ -284,7 +468,7 @@ const PartyReport = () => {
               ))}
               {paginatedParties.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-8 py-20 text-center text-slate-400 dark:text-slate-500 italic">No parties found.</td>
+                  <td colSpan={7} className="px-8 py-20 text-center text-slate-400 dark:text-slate-500 italic">No parties found.</td>
                 </tr>
               )}
             </tbody>
@@ -381,6 +565,84 @@ const PartyReport = () => {
                 >
                   {saving ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                   Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isBulkCommModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { if (!bulkSaving) setIsBulkCommModalOpen(false); }} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/30">
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white">Change Commission Rate</h3>
+              <button disabled={bulkSaving} onClick={() => setIsBulkCommModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-all disabled:opacity-30 disabled:pointer-events-none">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm font-bold text-slate-500 dark:text-slate-400 text-center">
+                {selectedPartyIds.size > 0 ? (
+                  <>Updating rates for <span className="text-emerald-600 dark:text-emerald-455 font-black">{selectedPartyIds.size}</span> selected parties ({selectedTakeCount} Take, {selectedGiveCount} Give).</>
+                ) : (
+                  <>Updating commission rates for <span className="text-emerald-600 dark:text-emerald-455 font-black">ALL</span> registered normal parties.</>
+                )}
+              </div>
+              
+              {(selectedPartyIds.size === 0 || selectedTakeCount > 0) && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                    Take Parties Comm. Rate (%) <span className="text-emerald-600">{selectedPartyIds.size > 0 ? `(${selectedTakeCount} selected)` : '(All)'}</span>
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 2.0"
+                    className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg"
+                    value={bulkTakeCommRate}
+                    onChange={(e) => setBulkTakeCommRate(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {(selectedPartyIds.size === 0 || selectedGiveCount > 0) && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                    Give Parties Comm. Rate (%) <span className="text-rose-600">{selectedPartyIds.size > 0 ? `(${selectedGiveCount} selected)` : '(All)'}</span>
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.01"
+                    placeholder="e.g. 3.5"
+                    className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg"
+                    value={bulkGiveCommRate}
+                    onChange={(e) => setBulkGiveCommRate(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="flex gap-4 pt-4">
+                <button 
+                  disabled={bulkSaving}
+                  onClick={() => setIsBulkCommModalOpen(false)}
+                  className="flex-grow py-4 bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleBulkCommSave}
+                  disabled={
+                    bulkSaving || 
+                    (bulkTakeCommRate.trim() !== '' && (isNaN(parseFloat(bulkTakeCommRate)) || parseFloat(bulkTakeCommRate) < 0)) || 
+                    (bulkGiveCommRate.trim() !== '' && (isNaN(parseFloat(bulkGiveCommRate)) || parseFloat(bulkGiveCommRate) < 0)) || 
+                    (bulkTakeCommRate.trim() === '' && bulkGiveCommRate.trim() === '')
+                  }
+                  className="flex-grow py-4 bg-emerald-600 text-white rounded-2xl font-black hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {bulkSaving ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                  Apply Rate
                 </button>
               </div>
             </div>

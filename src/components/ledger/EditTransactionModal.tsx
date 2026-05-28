@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { X, ArrowRightLeft, ChevronDown, Plus, Save } from 'lucide-react';
+import { X, ArrowRightLeft, ChevronDown, Plus, Save, RefreshCcw } from 'lucide-react';
 
 interface Party {
   id: string;
@@ -95,14 +95,17 @@ export const EditTransactionModal = ({
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div 
         className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" 
-        onClick={onClose} 
+        onClick={() => {
+          if (!submitting) onClose();
+        }} 
       />
       <div className="relative bg-white dark:bg-slate-900 w-full max-w-lg rounded-[2rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
         <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-950/30">
           <h3 className="text-2xl font-black text-slate-900 dark:text-white">Modify Entry</h3>
           <button 
             onClick={onClose} 
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all"
+            disabled={submitting}
+            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all disabled:opacity-30 disabled:pointer-events-none"
           >
             <X className="w-6 h-6" />
           </button>
@@ -189,7 +192,7 @@ export const EditTransactionModal = ({
               ref={amountInputRef}
               required 
               type="number" 
-              step="0.01" 
+              step="1" 
               placeholder="3000 (CR) or -3000 (DR)" 
               className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getEditAmountColorClass()}`} 
               value={editFormData.amount} 
@@ -211,7 +214,8 @@ export const EditTransactionModal = ({
           <div className="flex gap-4 pt-4">
             <button 
               onClick={onClose} 
-              className="flex-grow py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all"
+              disabled={submitting}
+              className="flex-grow py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-xl font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
@@ -220,8 +224,12 @@ export const EditTransactionModal = ({
               disabled={submitting || !editFormData.amount || parseFloat(editFormData.amount) === 0 || !editFormData.linkedParty} 
               className="flex-grow py-3 bg-blue-600 text-white rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
             >
-              <Save className="w-5 h-5" />
-              Update
+              {submitting ? (
+                <RefreshCcw className="w-5 h-5 animate-spin" />
+              ) : (
+                <Save className="w-5 h-5" />
+              )}
+              {submitting ? 'Updating...' : 'Update'}
             </button>
           </div>
         </div>

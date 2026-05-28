@@ -30,6 +30,7 @@ import { EditTransactionModal } from '../components/ledger/EditTransactionModal'
 import { ConfirmDialog } from '../components/ledger/ConfirmDialog';
 import { DcReportModal } from '../components/ledger/DcReportModal';
 import { LedgerPrintLayout } from '../components/ledger/LedgerPrintLayout';
+import { PrintConfigModal } from '../components/ledger/PrintConfigModal';
 
 // Hook and Type Imports
 import { useLedgerTransactions, type Party } from '../hooks/useLedgerTransactions';
@@ -68,6 +69,12 @@ const LedgerView = () => {
   
   // Reconciled/Checked transactions checklist state
   const [checkedTnsIds, setCheckedTnsIds] = useState<Set<string>>(new Set());
+
+  // Print Filter & Modal States
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printFilterType, setPrintFilterType] = useState<'all' | 'date'>('all');
+  const [printStartDate, setPrintStartDate] = useState('');
+  const [printEndDate, setPrintEndDate] = useState('');
 
   // Load checked transaction IDs for the selected party
   useEffect(() => {
@@ -142,6 +149,9 @@ const LedgerView = () => {
   const headerSearchRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const headerDropdownRef = useRef<HTMLDivElement>(null);
+  const transactionListRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(0);
+  const prevPartyIdRef = useRef<string | null>(null);
 
   // confirmation dialog state passing
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -166,6 +176,7 @@ const LedgerView = () => {
       }
     } catch (err) {
       console.error(err);
+      alert("Error fetching parties (Ledger): " + JSON.stringify(err));
     } finally {
       setLoading(false);
     }
@@ -307,6 +318,28 @@ const LedgerView = () => {
     }
   }, [selectedParty]);
 
+  // Auto scroll to bottom when transactions load or a new transaction is added
+  const scrollToBottom = () => {
+    setTimeout(() => {
+      if (transactionListRef.current) {
+        transactionListRef.current.scrollTop = transactionListRef.current.scrollHeight;
+      }
+    }, 50);
+  };
+
+  useEffect(() => {
+    if (selectedParty && transactions.length > 0) {
+      const partyChanged = prevPartyIdRef.current !== selectedParty.id;
+      const lengthIncreased = transactions.length > prevLengthRef.current;
+
+      if (partyChanged || lengthIncreased) {
+        scrollToBottom();
+      }
+    }
+    prevLengthRef.current = transactions.length;
+    prevPartyIdRef.current = selectedParty?.id || null;
+  }, [transactions, selectedParty?.id]);
+
   const handlePartySelect = (party: Party) => {
     setSearchParams({ partyId: party.id });
     setSelectedParty(party);
@@ -319,6 +352,17 @@ const LedgerView = () => {
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
     setIsOldRecordsView(false);
+  };
+
+  const handlePrintConfirm = (filterType: 'all' | 'date', startDate: string, endDate: string) => {
+    setPrintFilterType(filterType);
+    setPrintStartDate(startDate);
+    setPrintEndDate(endDate);
+    setIsPrintModalOpen(false);
+    
+    setTimeout(() => {
+      window.print();
+    }, 300);
   };
 
   const handleExitParty = () => {
@@ -377,6 +421,7 @@ const LedgerView = () => {
   };
 
   const handleSelectLinkedParty = async (party: Party) => {
+    const prevLinkedParty = linkedParty;
     setLinkedParty(party);
     setLinkedSearch(party.party_name);
     setIsLinkedSearchOpen(false);
@@ -386,8 +431,10 @@ const LedgerView = () => {
       setAmount(result.amount);
       setRemarks(result.remarks);
     } else {
-      setAmount(prev => (remarks === 'COMMISSION' ? '' : prev));
-      setRemarks(prev => (prev === 'COMMISSION' ? '' : prev));
+      if (prevLinkedParty?.system_type === 'commission') {
+        setAmount('');
+        setRemarks('');
+      }
     }
     amountInputRef.current?.focus();
   };
@@ -515,7 +562,7 @@ const LedgerView = () => {
       name: 'Print', 
       icon: <Printer className="w-4 h-4" />, 
       color: 'bg-slate-100 text-slate-600', 
-      action: () => window.print() 
+      action: () => setIsPrintModalOpen(true) 
     },
     { 
       name: 'Check All', 
@@ -533,10 +580,51 @@ const LedgerView = () => {
 
   if (loading) return <GlobalLoader fullScreen={true} />;
 
-  // Computations for full print records
-  const printTotalCredit = printTransactions.filter(t => !t.is_settlement).reduce((sum, t) => sum + Number(t.credit || 0), 0);
-  const printTotalDebit = printTransactions.filter(t => !t.is_settlement).reduce((sum, t) => sum + Number(t.debit || 0), 0);
-  const printFinalBalance = printTransactions.length > 0 ? printTransactions[printTransactions.length - 1].balance : 0;
+  // Computations for filtered print records
+  const filteredPrintTransactions = printTransactions.filter(t => {
+    if (printFilterType === 'all') return true;
+    
+    const tDate = new Date(t.transaction_date);
+    tDate.setHours(0, 0, 0, 0);
+    
+    if (printStartDate) {
+      const sDate = new Date(printStartDate);
+      sDate.setHours(0, 0, 0, 0);
+      if (tDate < sDate) return false;
+    }
+    
+    if (printEndDate) {
+      const eDate = new Date(printEndDate);
+      eDate.setHours(0, 0, 0, 0);
+      if (tDate > eDate) return false;
+    }
+    
+    return true;
+  });
+
+  const printTotalCredit = filteredPrintTransactions
+    .filter(t => !t.is_settlement)
+    .reduce((sum, t) => sum + Number(t.credit || 0), 0);
+
+  const printTotalDebit = filteredPrintTransactions
+    .filter(t => !t.is_settlement)
+    .reduce((sum, t) => sum + Number(t.debit || 0), 0);
+
+  const printFinalBalance = filteredPrintTransactions.length > 0 
+    ? filteredPrintTransactions[filteredPrintTransactions.length - 1].balance 
+    : 0;
+
+  const printOpeningBalance = (() => {
+    if (printFilterType === 'all' || filteredPrintTransactions.length === 0) return 0;
+    
+    const firstT = filteredPrintTransactions[0];
+    const idx = printTransactions.findIndex(t => t.id === firstT.id);
+    
+    if (idx > 0) {
+      return printTransactions[idx - 1].balance;
+    }
+    return 0;
+  })();
 
   return (
     <>
@@ -657,93 +745,91 @@ const LedgerView = () => {
         </div>
       ) : (
         <div className="flex flex-col h-auto lg:h-full lg:overflow-hidden">
-          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 md:px-6 py-3 flex flex-col md:flex-row gap-4 md:items-center justify-between shrink-0 shadow-sm z-20 transition-colors duration-200">
-            <div className="flex items-start md:items-center gap-3 md:gap-4">
-              <button onClick={handleExitParty} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0">
-                <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
-              </button>
-              <div className="flex flex-wrap items-center gap-2 md:gap-4" ref={headerDropdownRef}>
-                <div className="relative w-full sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
-                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
-                  {firstHeaderMatch && (
-                    <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
-                      <span className="text-transparent">{firstHeaderMatch.party_name.slice(0, headerSearch.length)}</span>
-                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-450 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
-                        {firstHeaderMatch.party_name.slice(headerSearch.length)}
-                        <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
-                      </span>
-                    </div>
-                  )}
-                  <input 
-                    ref={headerSearchRef} 
-                    placeholder={selectedParty.party_name} 
-                    className="w-full pl-10 pr-8 py-2.5 bg-transparent outline-none font-bold text-sm text-slate-800 dark:text-white relative z-10" 
-                    value={headerSearch} 
-                    onChange={(e) => { setHeaderSearch(e.target.value); setIsHeaderSearchOpen(true); setHighlightedIndex(0); }} 
-                    onClick={() => setIsHeaderSearchOpen(true)} 
-                    onKeyDown={(e) => { 
-                      const isHeaderSearchActive = headerSearch.trim() !== '';
-                      if (e.key === 'Escape') {
-                        e.preventDefault();
-                        setIsHeaderSearchOpen(false);
-                      } else if ((e.key === 'Enter' || e.key === 'Tab') && isHeaderSearchActive && firstHeaderMatch) {
-                        e.preventDefault();
-                        handlePartySelect(firstHeaderMatch);
-                      } else if (e.key === 'ArrowDown') {
-                        e.preventDefault();
-                        setIsHeaderSearchOpen(true);
-                        setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
-                      } else if (e.key === 'ArrowUp') {
-                        e.preventDefault();
-                        setHighlightedIndex(p => Math.max(p-1, 0)); 
-                      } else if (e.key === 'Enter' && isHeaderSearchActive && filteredHeaderParties.length > 0) {
-                        e.preventDefault();
-                        handlePartySelect(filteredHeaderParties[highlightedIndex]);
-                      }
-                    }} 
-                  />
-                  <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 transition-all pointer-events-none ${isHeaderSearchOpen ? 'rotate-180' : ''}`} />
-                  {isHeaderSearchOpen && filteredHeaderParties.length > 0 && (
-                    <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-50">
-                      {filteredHeaderParties.map((p, i) => (
-                        <div 
-                          key={p.id} 
-                          onClick={() => handlePartySelect(p)} 
-                          className={`px-4 py-2.5 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
-                        >
-                          <span className="font-bold text-sm">{p.party_name}</span>
-                          <span className="text-[10px] font-black opacity-45 dark:opacity-60 uppercase">{p.sr_no}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-bold text-sm text-slate-800 dark:text-slate-200 shadow-sm transition-colors">
-                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">SR NO:</span>
-                  <span className="leading-none">{selectedParty.sr_no}</span>
-                </div>
-                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-black text-sm shadow-sm transition-colors">
-                  <span className={`uppercase leading-none ${selectedParty.status === 'take' ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-455'}`}>
-                    {selectedParty.status}
-                  </span>
-                  {selectedParty.system_type === 'normal' && (
-                    <span className="text-slate-400 dark:text-slate-500 font-bold leading-none">
-                      ({selectedParty.commission_rate}%)
-                    </span>
-                  )}
+          <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row shrink-0 shadow-sm z-20 transition-colors duration-200">
+            {/* Left section aligned over the main transaction table */}
+            <div className="flex-grow flex flex-col sm:flex-row gap-4 sm:items-center justify-between px-4 md:px-6 py-3">
+              <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+                <button onClick={handleExitParty} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0">
+                  <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
+                </button>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-4" ref={headerDropdownRef}>
+                  <div className="relative w-full sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
+                    {firstHeaderMatch && (
+                      <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
+                        <span className="text-transparent">{firstHeaderMatch.party_name.slice(0, headerSearch.length)}</span>
+                        <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-450 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
+                          {firstHeaderMatch.party_name.slice(headerSearch.length)}
+                          <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
+                        </span>
+                      </div>
+                    )}
+                    <input 
+                      ref={headerSearchRef} 
+                      placeholder={selectedParty.party_name} 
+                      className="w-full pl-10 pr-8 py-2.5 bg-transparent outline-none font-bold text-sm text-slate-800 dark:text-white relative z-10" 
+                      value={headerSearch} 
+                      onChange={(e) => { setHeaderSearch(e.target.value); setIsHeaderSearchOpen(true); setHighlightedIndex(0); }} 
+                      onClick={() => setIsHeaderSearchOpen(true)} 
+                      onKeyDown={(e) => { 
+                        const isHeaderSearchActive = headerSearch.trim() !== '';
+                        if (e.key === 'Escape') {
+                          e.preventDefault();
+                          setIsHeaderSearchOpen(false);
+                        } else if ((e.key === 'Enter' || e.key === 'Tab') && isHeaderSearchActive && firstHeaderMatch) {
+                          e.preventDefault();
+                          handlePartySelect(firstHeaderMatch);
+                        } else if (e.key === 'ArrowDown') {
+                          e.preventDefault();
+                          setIsHeaderSearchOpen(true);
+                          setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
+                        } else if (e.key === 'ArrowUp') {
+                          e.preventDefault();
+                          setHighlightedIndex(p => Math.max(p-1, 0)); 
+                        } else if (e.key === 'Enter' && isHeaderSearchActive && filteredHeaderParties.length > 0) {
+                          e.preventDefault();
+                          handlePartySelect(filteredHeaderParties[highlightedIndex]);
+                        }
+                      }} 
+                    />
+                    <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 transition-all pointer-events-none ${isHeaderSearchOpen ? 'rotate-180' : ''}`} />
+                    {isHeaderSearchOpen && filteredHeaderParties.length > 0 && (
+                      <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-50">
+                        {filteredHeaderParties.map((p, i) => (
+                          <div 
+                            key={p.id} 
+                            onClick={() => handlePartySelect(p)} 
+                            className={`px-4 py-2.5 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                          >
+                            <span className="font-bold text-sm">{p.party_name}</span>
+                            <span className="text-[10px] font-black opacity-45 dark:opacity-60 uppercase">{p.sr_no}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-bold text-sm text-slate-800 dark:text-slate-200 shadow-sm transition-colors">
+                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">SR NO:</span>
+                    <span className="leading-none">{selectedParty.sr_no}</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Closing Balance aligned right, just before the sidebar begins */}
+              <div className="flex items-center gap-2 text-left sm:text-right px-4 sm:px-0 shrink-0 whitespace-nowrap">
+                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">Closing Balance:</span>
+                <span className={`text-xl md:text-2xl font-black leading-none ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}`}>
+                  {closingBalance < 0 ? '- ' : ''}₹ {Math.round(Math.abs(closingBalance)).toLocaleString()}<span className="text-xs ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span>
+                </span>
+              </div>
             </div>
-            <div className="text-left md:text-right px-10 md:px-0">
-              <p className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">Closing Balance</p>
-              <p className={`text-2xl md:text-3xl font-black ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}`}>
-                ₹ {Math.abs(closingBalance).toLocaleString()}<span className="text-sm ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span>
-              </p>
-            </div>
+
+            {/* Spacer matching the width of the sidebar (lg:w-64) with a matching left border */}
+            <div className="hidden lg:block lg:w-64 shrink-0 lg:border-l border-slate-200 dark:border-slate-800 py-3" />
           </div>
           <div className="flex flex-col lg:flex-row flex-grow lg:overflow-hidden h-auto lg:h-full">
             <div className="flex-grow flex flex-col h-auto lg:h-full lg:overflow-hidden relative">
-              <div className="flex-grow overflow-y-auto px-4 md:px-6 py-4 bg-slate-50/30 dark:bg-slate-950/10">
+              <div ref={transactionListRef} className="flex-grow overflow-y-auto px-4 md:px-6 py-4 bg-slate-50/30 dark:bg-slate-950/10">
                 <div className="bg-white dark:bg-slate-900 rounded-[1.2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto transition-colors duration-200">
                   <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
@@ -786,14 +872,14 @@ const LedgerView = () => {
                               </span>
                             )}
                           </td>
-                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${t.credit.toLocaleString()}` : '-'}</td>
-                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-400 font-bold'}`}>{t.debit > 0 ? `₹ ${t.debit.toLocaleString()}` : '-'}</td>
+                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString()}` : '-'}</td>
+                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-455 font-bold'}`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
                           <td className="px-6 py-3 text-center w-12">
                             <div onClick={(e) => toggleCheckedTns(t.id, e)} className={`w-5 h-5 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.has(t.id) ? (selectedTnsIds.has(t.id) ? 'bg-white border-white text-blue-600' : 'bg-emerald-500 border-emerald-500 text-white') : (selectedTnsIds.has(t.id) ? 'border-blue-200 text-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
                               {checkedTnsIds.has(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
                           </td>
-                          <td className={`px-6 py-3 text-right font-black ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-400')}`}>₹ {Math.abs(t.balance).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
+                          <td className={`px-6 py-3 text-right font-black ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455')}`}>₹ {Math.round(Math.abs(t.balance)).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -879,7 +965,7 @@ const LedgerView = () => {
                         ref={amountInputRef} 
                         required 
                         type="number" 
-                        step="0.01" 
+                        step="1" 
                         placeholder="3000 (CR) or -3000 (DR)" 
                         className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getAmountColorClass()}`} 
                         value={amount} 
@@ -975,16 +1061,26 @@ const LedgerView = () => {
         dcReportData={dcReportData}
         setDcReportData={setDcReportData}
       />
+
+      <PrintConfigModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        onConfirm={handlePrintConfirm}
+      />
       </div>
 
       {/* Premium Printable PDF Layout */}
       {selectedParty && (
         <LedgerPrintLayout
           selectedParty={selectedParty}
-          printTransactions={printTransactions}
+          printTransactions={filteredPrintTransactions}
           printTotalCredit={printTotalCredit}
           printTotalDebit={printTotalDebit}
           printFinalBalance={printFinalBalance}
+          printFilterType={printFilterType}
+          printStartDate={printStartDate}
+          printEndDate={printEndDate}
+          printOpeningBalance={printOpeningBalance}
         />
       )}
     </>

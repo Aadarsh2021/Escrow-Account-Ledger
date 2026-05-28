@@ -29,7 +29,7 @@ export const DcReportModal = ({
   if (!isOpen) return null;
 
   const getAmountClass = (val: number) => {
-    const formatted = val.toLocaleString();
+    const formatted = Math.round(val).toLocaleString();
     if (formatted.length > 14) return 'text-[9px] sm:text-[10px] md:text-[11px]';
     if (formatted.length > 10) return 'text-[11px] sm:text-xs md:text-sm';
     return 'text-xs sm:text-sm md:text-base';
@@ -90,21 +90,21 @@ export const DcReportModal = ({
               <div className="flex flex-col items-center justify-center px-1">
                 <span className="text-[9px] sm:text-[10px] font-black text-emerald-600/70 uppercase tracking-wider mb-1">Total Credit</span>
                 <span className={`font-black text-emerald-600 break-all ${getAmountClass(dcReportData?.credit || 0)}`}>
-                  ₹{(dcReportData?.credit || 0).toLocaleString()}
+                  ₹{Math.round(dcReportData?.credit || 0).toLocaleString()}
                 </span>
               </div>
               
               <div className="flex flex-col items-center justify-center px-1">
                 <span className="text-[9px] sm:text-[10px] font-black text-rose-600/70 uppercase tracking-wider mb-1">Total Debit</span>
                 <span className={`font-black text-rose-600 break-all ${getAmountClass(dcReportData?.debit || 0)}`}>
-                  ₹{(dcReportData?.debit || 0).toLocaleString()}
+                  ₹{Math.round(dcReportData?.debit || 0).toLocaleString()}
                 </span>
               </div>
               
               <div className="flex flex-col items-center justify-center px-1">
                 <span className="text-[9px] sm:text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Net Balance</span>
                 <span className={`font-black flex flex-wrap items-baseline justify-center gap-0.5 ${(dcReportData?.balance || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'} ${getAmountClass(Math.abs(dcReportData?.balance || 0))}`}>
-                  <span className="break-all">₹{Math.abs(dcReportData?.balance || 0).toLocaleString()}</span>
+                  <span className="break-all">₹{Math.round(Math.abs(dcReportData?.balance || 0)).toLocaleString()}</span>
                   <span className="text-[9px] sm:text-xs font-bold opacity-80">{(dcReportData?.balance || 0) >= 0 ? '(CR)' : '(DR)'}</span>
                 </span>
               </div>
