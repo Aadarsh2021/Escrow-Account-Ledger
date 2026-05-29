@@ -430,11 +430,13 @@ export const useLedgerTransactions = ({
         .select('party_id')
         .eq('linked_transaction_id', anchorId);
       
-      const affectedPartyIds = new Set<string>([
-        selectedParty.id,
-        editFormData.linkedParty.id,
-        ...(tnsToModify?.map(t => t.party_id) || [])
-      ]);
+      const affectedPartyIds = new Set<string>(
+        [
+          selectedParty.id,
+          editFormData.linkedParty.id,
+          ...(tnsToModify?.map(t => t.party_id) || [])
+        ].filter(Boolean) as string[]
+      );
 
       const absAmt = Math.abs(numAmt);
       const primaryType = numAmt > 0 ? 'CR' : 'DR';
@@ -443,7 +445,7 @@ export const useLedgerTransactions = ({
       const { error: delError } = await supabase
         .from('transactions')
         .delete()
-        .eq('linked_transaction_id', anchorId);
+        .or(`id.eq.${anchorId},linked_transaction_id.eq.${anchorId}`);
       
       if (delError) throw delError;
 
