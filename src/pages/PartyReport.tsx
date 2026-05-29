@@ -86,20 +86,7 @@ const PartyReport = () => {
     setSelectedPartyIds(newSelected);
   };
 
-  const toggleSelectAllParties = () => {
-    const normalParties = paginatedParties.filter(p => p.system_type === 'normal');
-    const allSelected = normalParties.every(p => selectedPartyIds.has(p.id));
 
-    if (allSelected) {
-      const newSelected = new Set(selectedPartyIds);
-      normalParties.forEach(p => newSelected.delete(p.id));
-      setSelectedPartyIds(newSelected);
-    } else {
-      const newSelected = new Set(selectedPartyIds);
-      normalParties.forEach(p => newSelected.add(p.id));
-      setSelectedPartyIds(newSelected);
-    }
-  };
 
   const handleBulkCommSave = async () => {
     const takeRate = parseFloat(bulkTakeCommRate);
@@ -316,6 +303,22 @@ const PartyReport = () => {
   const totalPages = Math.ceil(filteredParties.length / ITEMS_PER_PAGE);
   const paginatedParties = filteredParties.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
+  const normalFilteredParties = filteredParties.filter(p => p.system_type === 'normal');
+  const isAllFilteredNormalSelected = normalFilteredParties.length > 0 && normalFilteredParties.every(p => selectedPartyIds.has(p.id));
+  const isSomeFilteredNormalSelected = normalFilteredParties.length > 0 && !isAllFilteredNormalSelected && normalFilteredParties.some(p => selectedPartyIds.has(p.id));
+
+  const toggleSelectAllParties = () => {
+    if (isAllFilteredNormalSelected) {
+      const newSelected = new Set(selectedPartyIds);
+      normalFilteredParties.forEach(p => newSelected.delete(p.id));
+      setSelectedPartyIds(newSelected);
+    } else {
+      const newSelected = new Set(selectedPartyIds);
+      normalFilteredParties.forEach(p => newSelected.add(p.id));
+      setSelectedPartyIds(newSelected);
+    }
+  };
+
   if (loading) return <GlobalLoader fullScreen={true} />;
 
   return (
@@ -385,16 +388,19 @@ const PartyReport = () => {
                   <div 
                     onClick={toggleSelectAllParties} 
                     className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
-                      paginatedParties.filter(p => p.system_type === 'normal').length > 0 &&
-                      paginatedParties.filter(p => p.system_type === 'normal').every(p => selectedPartyIds.has(p.id))
-                        ? 'bg-emerald-600 border-emerald-600'
-                        : 'border-slate-300 dark:border-slate-700'
+                      isAllFilteredNormalSelected 
+                        ? 'bg-emerald-600 border-emerald-600' 
+                        : isSomeFilteredNormalSelected 
+                          ? 'border-emerald-600' 
+                          : 'border-slate-300 dark:border-slate-700'
                     }`}
                   >
-                    {paginatedParties.filter(p => p.system_type === 'normal').length > 0 &&
-                     paginatedParties.filter(p => p.system_type === 'normal').every(p => selectedPartyIds.has(p.id)) && (
-                       <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>
-                     )}
+                    {isAllFilteredNormalSelected && (
+                      <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>
+                    )}
+                    {isSomeFilteredNormalSelected && (
+                      <div className="w-1.5 h-1.5 bg-emerald-600 dark:bg-emerald-455 rounded-sm"></div>
+                    )}
                   </div>
                 </th>
                 <th className="px-6 py-5">SR NO</th>

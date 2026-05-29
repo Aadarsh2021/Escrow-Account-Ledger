@@ -25,6 +25,7 @@ export interface Transaction {
   is_settlement?: boolean;
   is_finalized?: boolean;
   settlement_id?: string;
+  created_at?: string;
 }
 
 const generateUUID = () => {
@@ -469,7 +470,9 @@ export const useLedgerTransactions = ({
           tns_type: primaryType,
           credit: creditA,
           debit: debitA,
-          balance: newBalA
+          balance: newBalA,
+          transaction_date: tnsA.transaction_date,
+          created_at: tnsA.created_at
         },
         {
           id: generateUUID(),
@@ -480,7 +483,9 @@ export const useLedgerTransactions = ({
           tns_type: secondaryType,
           credit: creditB,
           debit: debitB,
-          balance: newBalB
+          balance: newBalB,
+          transaction_date: tnsA.transaction_date,
+          created_at: tnsA.created_at
         }
       ]);
 
@@ -569,7 +574,7 @@ export const useLedgerTransactions = ({
 
       const companyPartyObj = pairParties?.find(p => p.system_type === 'company');
       const commissionPartyObj = pairParties?.find(p => p.system_type === 'commission');
-      const partnerPartyObj = pairParties?.find(p => p.id !== selectedParty.id && p.system_type !== 'commission');
+      const partnerPartyObj = pairParties?.find(p => p.id !== selectedParty.id);
 
       let initialLinkedParty: Party | null = null;
       let initialAmountVal = 0;
@@ -613,10 +618,16 @@ export const useLedgerTransactions = ({
     setIsEditLinkedSearchOpen(false);
     if (party.system_type === 'commission' && selectedParty) {
       const isTake = selectedParty.status === 'take';
-      const lastCommIdx = [...transactions].reverse().findIndex(t => t.partner_system_type === 'commission');
+      const editingTnsId = Array.from(selectedTnsIds)[0];
+      const editingTnsIdx = transactions.findIndex(t => t.id === editingTnsId);
+      const filteredTransactions = editingTnsIdx !== -1 
+        ? transactions.slice(0, editingTnsIdx) 
+        : transactions;
+
+      const lastCommIdx = [...filteredTransactions].reverse().findIndex(t => t.partner_system_type === 'commission');
       const uncommissionedTns = lastCommIdx === -1 
-        ? transactions 
-        : transactions.slice(transactions.length - lastCommIdx);
+        ? filteredTransactions 
+        : filteredTransactions.slice(filteredTransactions.length - lastCommIdx);
       const mainTns = uncommissionedTns.filter(t => !t.is_settlement && t.partner_system_type !== 'commission');
       
       let totalVolume = 0;

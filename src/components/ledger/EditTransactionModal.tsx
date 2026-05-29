@@ -54,6 +54,7 @@ export const EditTransactionModal = ({
 }: EditTransactionModalProps) => {
   const editLinkedSearchRef = useRef<HTMLInputElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
+  const remarksInputRef = useRef<HTMLInputElement>(null);
   const editDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -197,6 +198,12 @@ export const EditTransactionModal = ({
               className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getEditAmountColorClass()}`} 
               value={editFormData.amount} 
               onChange={(e) => setEditFormData(prev => ({ ...prev, amount: e.target.value }))} 
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  remarksInputRef.current?.focus();
+                }
+              }}
             />
           </div>
           <div className="space-y-1.5">
@@ -204,10 +211,20 @@ export const EditTransactionModal = ({
             <div className="relative">
               <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
               <input 
+                ref={remarksInputRef}
                 placeholder="Enter details..." 
                 className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
                 value={editFormData.remarks} 
                 onChange={(e) => setEditFormData(prev => ({ ...prev, remarks: e.target.value }))} 
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const isSaveDisabled = submitting || !editFormData.amount || parseFloat(editFormData.amount) === 0 || !editFormData.linkedParty;
+                    if (!isSaveDisabled) {
+                      onSave();
+                    }
+                  }
+                }}
               />
             </div>
           </div>

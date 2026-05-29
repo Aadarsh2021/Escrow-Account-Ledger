@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Check
+  Check,
+  Menu,
+  X
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -75,6 +77,7 @@ const LedgerView = () => {
   const [printFilterType, setPrintFilterType] = useState<'all' | 'date'>('all');
   const [printStartDate, setPrintStartDate] = useState('');
   const [printEndDate, setPrintEndDate] = useState('');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // Load checked transaction IDs for the selected party
   useEffect(() => {
@@ -410,15 +413,7 @@ const LedgerView = () => {
     }
   };
 
-  const toggleSelectAllParties = () => {
-    if (selectedPartyIds.size === paginatedParties.length) {
-      setSelectedPartyIds(new Set());
-    } else {
-      const newSelected = new Set(selectedPartyIds);
-      paginatedParties.forEach(p => newSelected.add(p.id));
-      setSelectedPartyIds(newSelected);
-    }
-  };
+
 
   const handleSelectLinkedParty = async (party: Party) => {
     const prevLinkedParty = linkedParty;
@@ -461,6 +456,21 @@ const LedgerView = () => {
   
   const totalPages = Math.ceil(filteredParties.length / ITEMS_PER_PAGE);
   const paginatedParties = filteredParties.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const isAllFilteredSelected = filteredParties.length > 0 && filteredParties.every(p => selectedPartyIds.has(p.id));
+  const isSomeFilteredSelected = filteredParties.length > 0 && !isAllFilteredSelected && filteredParties.some(p => selectedPartyIds.has(p.id));
+
+  const toggleSelectAllParties = () => {
+    if (isAllFilteredSelected) {
+      const newSelected = new Set(selectedPartyIds);
+      filteredParties.forEach(p => newSelected.delete(p.id));
+      setSelectedPartyIds(newSelected);
+    } else {
+      const newSelected = new Set(selectedPartyIds);
+      filteredParties.forEach(p => newSelected.add(p.id));
+      setSelectedPartyIds(newSelected);
+    }
+  };
 
   const isSearchActive = linkedSearch.trim() !== '' && (!linkedParty || linkedSearch !== linkedParty.party_name);
 
@@ -628,7 +638,7 @@ const LedgerView = () => {
 
   return (
     <>
-      <div className="flex flex-col h-auto lg:h-[calc(100vh-64px)] bg-slate-50 dark:bg-slate-950 transition-colors duration-200 print:hidden">
+      <div className={`flex flex-col bg-slate-50 dark:bg-slate-950 transition-colors duration-200 print:hidden ${selectedParty ? 'h-[calc(100dvh-128px)] md:h-[calc(100dvh-64px)] overflow-hidden' : 'h-auto lg:h-[calc(100vh-64px)]'}`}>
       {!selectedParty ? (
         <div className="max-w-6xl mx-auto w-full px-4 py-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -698,7 +708,10 @@ const LedgerView = () => {
                     <th className="px-8 py-4">Party Name</th>
                     <th className="px-8 py-4 text-center">Monday Final</th>
                     <th className="px-8 py-4 text-center">
-                       <div onClick={toggleSelectAllParties} className={`w-5 h-5 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedPartyIds.size === paginatedParties.length && paginatedParties.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>{selectedPartyIds.size === paginatedParties.length && paginatedParties.length > 0 && <div className="w-2 h-2 bg-white rounded-sm"></div>}</div>
+                       <div onClick={toggleSelectAllParties} className={`w-5 h-5 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${isAllFilteredSelected ? 'bg-blue-600 border-blue-600' : isSomeFilteredSelected ? 'border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>
+                         {isAllFilteredSelected && <div className="w-2 h-2 bg-white rounded-sm"></div>}
+                         {isSomeFilteredSelected && <div className="w-2 h-2 bg-blue-600 dark:bg-blue-400 rounded-sm"></div>}
+                       </div>
                     </th>
                   </tr>
                 </thead>
@@ -744,123 +757,131 @@ const LedgerView = () => {
           </div>
         </div>
       ) : (
-        <div className="flex flex-col h-auto lg:h-full lg:overflow-hidden">
+        <div className="flex flex-col h-full overflow-hidden">
           <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row shrink-0 shadow-sm z-20 transition-colors duration-200">
             {/* Left section aligned over the main transaction table */}
-            <div className="flex-grow flex flex-col sm:flex-row gap-4 sm:items-center justify-between px-4 md:px-6 py-3">
-              <div className="flex items-start sm:items-center gap-3 sm:gap-4">
+            <div className="flex-grow flex flex-col lg:flex-row lg:items-center justify-between gap-4 px-4 md:px-6 py-3">
+              <div className="flex items-center gap-2 w-full lg:w-auto" ref={headerDropdownRef}>
                 <button onClick={handleExitParty} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all shrink-0">
                   <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
                 </button>
-                <div className="flex flex-wrap items-center gap-2 sm:gap-4" ref={headerDropdownRef}>
-                  <div className="relative w-full sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
-                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
-                    {firstHeaderMatch && (
-                      <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
-                        <span className="text-transparent">{firstHeaderMatch.party_name.slice(0, headerSearch.length)}</span>
-                        <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-450 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
-                          {firstHeaderMatch.party_name.slice(headerSearch.length)}
-                          <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
-                        </span>
-                      </div>
-                    )}
-                    <input 
-                      ref={headerSearchRef} 
-                      placeholder={selectedParty.party_name} 
-                      className="w-full pl-10 pr-8 py-2.5 bg-transparent outline-none font-bold text-sm text-slate-800 dark:text-white relative z-10" 
-                      value={headerSearch} 
-                      onChange={(e) => { setHeaderSearch(e.target.value); setIsHeaderSearchOpen(true); setHighlightedIndex(0); }} 
-                      onClick={() => setIsHeaderSearchOpen(true)} 
-                      onKeyDown={(e) => { 
-                        const isHeaderSearchActive = headerSearch.trim() !== '';
-                        if (e.key === 'Escape') {
-                          e.preventDefault();
-                          setIsHeaderSearchOpen(false);
-                        } else if ((e.key === 'Enter' || e.key === 'Tab') && isHeaderSearchActive && firstHeaderMatch) {
-                          e.preventDefault();
-                          handlePartySelect(firstHeaderMatch);
-                        } else if (e.key === 'ArrowDown') {
-                          e.preventDefault();
-                          setIsHeaderSearchOpen(true);
-                          setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
-                        } else if (e.key === 'ArrowUp') {
-                          e.preventDefault();
-                          setHighlightedIndex(p => Math.max(p-1, 0)); 
-                        } else if (e.key === 'Enter' && isHeaderSearchActive && filteredHeaderParties.length > 0) {
-                          e.preventDefault();
-                          handlePartySelect(filteredHeaderParties[highlightedIndex]);
-                        }
-                      }} 
-                    />
-                    <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 transition-all pointer-events-none ${isHeaderSearchOpen ? 'rotate-180' : ''}`} />
-                    {isHeaderSearchOpen && filteredHeaderParties.length > 0 && (
-                      <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-50">
-                        {filteredHeaderParties.map((p, i) => (
-                          <div 
-                            key={p.id} 
-                            onClick={() => handlePartySelect(p)} 
-                            className={`px-4 py-2.5 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
-                          >
-                            <span className="font-bold text-sm">{p.party_name}</span>
-                            <span className="text-[10px] font-black opacity-45 dark:opacity-60 uppercase">{p.sr_no}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-bold text-sm text-slate-800 dark:text-slate-200 shadow-sm transition-colors">
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">SR NO:</span>
-                    <span className="leading-none">{selectedParty.sr_no}</span>
-                  </div>
+                <div className="relative flex-grow sm:flex-none sm:w-72 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
+                  {firstHeaderMatch && (
+                    <div className="absolute inset-0 pl-10 pr-8 py-2 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 text-sm select-none z-0">
+                      <span className="text-transparent">{firstHeaderMatch.party_name.slice(0, headerSearch.length)}</span>
+                      <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-455 border border-blue-100 dark:border-blue-900/30 rounded px-1.5 py-0.5 text-[9px] font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
+                        {firstHeaderMatch.party_name.slice(headerSearch.length)}
+                        <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[8px] text-blue-500 font-black shadow-xs">TAB</kbd>
+                      </span>
+                    </div>
+                  )}
+                  <input 
+                    ref={headerSearchRef} 
+                    placeholder={selectedParty.party_name} 
+                    className="w-full pl-10 pr-8 py-2.5 bg-transparent outline-none font-bold text-sm text-slate-800 dark:text-white relative z-10" 
+                    value={headerSearch} 
+                    onChange={(e) => { setHeaderSearch(e.target.value); setIsHeaderSearchOpen(true); setHighlightedIndex(0); }} 
+                    onClick={() => setIsHeaderSearchOpen(true)} 
+                    onKeyDown={(e) => { 
+                      const isHeaderSearchActive = headerSearch.trim() !== '';
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        setIsHeaderSearchOpen(false);
+                      } else if ((e.key === 'Enter' || e.key === 'Tab') && isHeaderSearchActive && firstHeaderMatch) {
+                        e.preventDefault();
+                        handlePartySelect(firstHeaderMatch);
+                      } else if (e.key === 'ArrowDown') {
+                        e.preventDefault();
+                        setIsHeaderSearchOpen(true);
+                        setHighlightedIndex(p => Math.min(p+1, filteredHeaderParties.length-1)); 
+                      } else if (e.key === 'ArrowUp') {
+                        e.preventDefault();
+                        setHighlightedIndex(p => Math.max(p-1, 0)); 
+                      } else if (e.key === 'Enter' && isHeaderSearchActive && filteredHeaderParties.length > 0) {
+                        e.preventDefault();
+                        handlePartySelect(filteredHeaderParties[highlightedIndex]);
+                      }
+                    }} 
+                  />
+                  <ChevronDown className={`absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 transition-all pointer-events-none ${isHeaderSearchOpen ? 'rotate-180' : ''}`} />
+                  {isHeaderSearchOpen && filteredHeaderParties.length > 0 && (
+                    <div className="absolute top-full left-0 w-full mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl max-h-60 overflow-y-auto z-50">
+                      {filteredHeaderParties.map((p, i) => (
+                        <div 
+                          key={p.id} 
+                          onClick={() => handlePartySelect(p)} 
+                          className={`px-4 py-2.5 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                        >
+                          <span className="font-bold text-sm">{p.party_name}</span>
+                          <span className="text-[10px] font-black opacity-45 dark:opacity-60 uppercase">{p.sr_no}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center gap-1.5 font-bold text-sm text-slate-800 dark:text-slate-200 shadow-sm transition-colors shrink-0">
+                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">SR NO:</span>
+                  <span className="leading-none">{selectedParty.sr_no}</span>
                 </div>
               </div>
 
-              {/* Closing Balance aligned right, just before the sidebar begins */}
-              <div className="flex items-center gap-2 text-left sm:text-right px-4 sm:px-0 shrink-0 whitespace-nowrap">
-                <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">Closing Balance:</span>
-                <span className={`text-xl md:text-2xl font-black leading-none ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}`}>
-                  {closingBalance < 0 ? '- ' : ''}₹ {Math.round(Math.abs(closingBalance)).toLocaleString()}<span className="text-xs ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span>
-                </span>
+              {/* Closing Balance aligned right on desktop, spaced on mobile */}
+              <div className="flex items-center justify-between lg:justify-end gap-4 w-full lg:w-auto shrink-0">
+                <div className="flex items-center gap-2 text-left lg:text-right whitespace-nowrap">
+                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">Closing Balance:</span>
+                  <span className={`text-xl lg:text-2xl font-black leading-none ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}`}>
+                    {closingBalance < 0 ? '- ' : ''}₹ {Math.round(Math.abs(closingBalance)).toLocaleString()}<span className="text-xs ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span>
+                  </span>
+                </div>
+                
+                {/* Mobile Menu Action button */}
+                <button 
+                  onClick={() => setIsSidebarOpen(true)}
+                  className="lg:hidden px-3.5 py-2 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-xl flex items-center gap-1.5 text-xs font-black uppercase tracking-wider shadow-sm transition-all hover:bg-blue-100 dark:hover:bg-blue-900/20 active:scale-95"
+                >
+                  <Menu className="w-4 h-4" /> Actions
+                </button>
               </div>
             </div>
 
             {/* Spacer matching the width of the sidebar (lg:w-64) with a matching left border */}
             <div className="hidden lg:block lg:w-64 shrink-0 lg:border-l border-slate-200 dark:border-slate-800 py-3" />
           </div>
-          <div className="flex flex-col lg:flex-row flex-grow lg:overflow-hidden h-auto lg:h-full">
-            <div className="flex-grow flex flex-col h-auto lg:h-full lg:overflow-hidden relative">
+          <div className="flex flex-col lg:flex-row flex-grow overflow-hidden min-h-0">
+            <div className="flex-grow flex flex-col min-h-0 overflow-hidden relative">
               <div ref={transactionListRef} className="flex-grow overflow-y-auto px-4 md:px-6 py-4 bg-slate-50/30 dark:bg-slate-950/10">
                 <div className="bg-white dark:bg-slate-900 rounded-[1.2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto transition-colors duration-200">
                   <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
                       <tr>
-                        <th className="px-6 py-3 text-center w-12">
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
                           <div onClick={toggleSelectAllTns} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>
                             {selectedTnsIds.size === transactions.length && transactions.length > 0 && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}
                           </div>
                         </th>
-                        <th className="px-6 py-3">Date</th>
-                        <th className="px-6 py-3">Particulars / Remarks</th>
-                        <th className="px-6 py-3 text-right">Credit</th>
-                        <th className="px-6 py-3 text-right">Debit</th>
-                        <th className="px-6 py-3 text-center w-12">
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 whitespace-nowrap">Date</th>
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 whitespace-nowrap">Particulars / Remarks</th>
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap">Credit</th>
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap">Debit</th>
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
                           <div onClick={(e) => { e.stopPropagation(); toggleSelectAllChecked(); }} className={`w-4 h-4 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 dark:border-slate-700'}`}>
                             {checkedTnsIds.size === transactions.length && transactions.length > 0 && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                           </div>
                         </th>
-                        <th className="px-6 py-3 text-right">Balance</th>
+                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap">Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
                       {transactions.map((t) => (
                         <tr key={t.id} onClick={() => toggleTnsSelection(t.id)} className={`cursor-pointer transition-all ${selectedTnsIds.has(t.id) ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' : t.is_settlement ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}>
-                          <td className="px-6 py-3 text-center">
+                          <td className="px-3 md:px-6 py-2.5 md:py-3 text-center">
                             <div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}>
                               <div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div>
                             </div>
                           </td>
-                          <td className={`px-6 py-3 text-[10px] ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{new Date(t.transaction_date).toLocaleDateString()}</td>
-                          <td className="px-6 py-3 font-bold">
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-[10px] whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{new Date(t.transaction_date).toLocaleDateString()}</td>
+                          <td className="px-3 md:px-6 py-2.5 md:py-3 font-bold whitespace-nowrap">
                             {!t.is_settlement && (
                               <span className={`uppercase text-[11px] font-black ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-slate-900 dark:text-slate-100'}`}>
                                 {t.partner_party_name || '-'}
@@ -872,14 +893,14 @@ const LedgerView = () => {
                               </span>
                             )}
                           </td>
-                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString()}` : '-'}</td>
-                          <td className={`px-6 py-3 text-right ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-455 font-bold'}`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
-                          <td className="px-6 py-3 text-center w-12">
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString()}` : '-'}</td>
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-455 font-bold'}`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
+                          <td className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
                             <div onClick={(e) => toggleCheckedTns(t.id, e)} className={`w-5 h-5 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.has(t.id) ? (selectedTnsIds.has(t.id) ? 'bg-white border-white text-blue-600' : 'bg-emerald-500 border-emerald-500 text-white') : (selectedTnsIds.has(t.id) ? 'border-blue-200 text-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
                               {checkedTnsIds.has(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
                           </td>
-                          <td className={`px-6 py-3 text-right font-black ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455')}`}>₹ {Math.round(Math.abs(t.balance)).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right font-black whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455')}`}>₹ {Math.round(Math.abs(t.balance)).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -887,14 +908,14 @@ const LedgerView = () => {
                 </div>
               </div>
               <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
-                <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col md:flex-row gap-4 items-stretch md:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="space-y-1.5 col-span-1 relative" ref={dropdownRef}>
+                <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-3 lg:gap-4 items-stretch lg:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-3 lg:gap-4">
+                    <div className="space-y-1.5 md:col-span-1 relative" ref={dropdownRef}>
                       <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
                       <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
                         <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
                         {firstLinkedMatch && (
-                          <div className="absolute inset-0 pl-11 pr-8 py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
+                          <div className="absolute inset-0 pl-11 pr-8 py-2.5 md:py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
                             <span className="text-transparent">{firstLinkedMatch.party_name.slice(0, linkedSearch.length)}</span>
                             <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
                               {firstLinkedMatch.party_name.slice(linkedSearch.length)}
@@ -905,7 +926,7 @@ const LedgerView = () => {
                         <input 
                           ref={linkedSearchRef} 
                           placeholder="Search Party..." 
-                          className="w-full pl-11 pr-8 py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10" 
+                          className="w-full pl-11 pr-8 py-2.5 md:py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10 text-sm md:text-base" 
                           value={linkedSearch} 
                           onChange={(e) => { 
                             const val = e.target.value;
@@ -949,7 +970,7 @@ const LedgerView = () => {
                               <div 
                                 key={p.id} 
                                 onClick={() => handleSelectLinkedParty(p)} 
-                                className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                                className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-455' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
                               >
                                 <span className="font-bold">{p.party_name}</span>
                                 <span className="text-[10px] font-black opacity-40 dark:opacity-60 uppercase">{p.sr_no}</span>
@@ -959,7 +980,7 @@ const LedgerView = () => {
                         )}
                       </div>
                     </div>
-                    <div className="space-y-1.5 col-span-1">
+                    <div className="space-y-1.5 md:col-span-1">
                       <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
                       <input 
                         ref={amountInputRef} 
@@ -967,7 +988,7 @@ const LedgerView = () => {
                         type="number" 
                         step="1" 
                         placeholder="3000 (CR) or -3000 (DR)" 
-                        className={`w-full px-5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-xl transition-colors ${getAmountColorClass()}`} 
+                        className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg md:text-xl transition-colors ${getAmountColorClass()}`} 
                         value={amount} 
                         onChange={(e) => setAmount(e.target.value)} 
                         onKeyDown={(e) => {
@@ -978,14 +999,14 @@ const LedgerView = () => {
                         }}
                       />
                     </div>
-                    <div className="space-y-1.5 col-span-2">
+                    <div className="space-y-1.5 md:col-span-2">
                       <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
                       <div className="relative">
                         <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                         <input 
                           ref={remarksInputRef}
                           placeholder="Enter details..." 
-                          className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600" 
+                          className="w-full pl-11 pr-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 text-sm md:text-base" 
                           value={remarks} 
                           onChange={(e) => setRemarks(e.target.value)} 
                         />
@@ -995,20 +1016,20 @@ const LedgerView = () => {
                   <button 
                     type="submit" 
                     disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} 
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[52px] w-full md:w-auto shrink-0"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 md:py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[46px] md:h-[52px] w-full lg:w-auto shrink-0"
                   >
                     {submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}
                   </button>
                 </form>
               </div>
             </div>
-            <div className="w-full lg:w-64 bg-white dark:bg-slate-900 border-t lg:border-t-0 lg:border-l border-slate-200 dark:border-slate-800 p-4 flex flex-row lg:flex-col flex-wrap lg:flex-nowrap gap-2 shrink-0 shadow-sm transition-colors duration-200">
+            <div className="hidden lg:flex lg:w-64 bg-white dark:bg-slate-900 lg:border-l border-slate-200 dark:border-slate-800 p-4 flex-col gap-2 shrink-0 shadow-sm transition-colors duration-200">
               {sidebarButtons.map((btn) => (
                 <button 
                   key={btn.name} 
                   onClick={btn.action} 
                   disabled={btn.disabled} 
-                  className={`w-[calc(50%-4px)] sm:w-auto lg:w-full flex items-center gap-2.5 lg:gap-4 px-4 lg:px-5 py-2.5 lg:py-3 rounded-xl font-bold text-xs lg:text-sm transition-all hover:scale-[1.02] active:scale-95 ${
+                  className={`w-full flex items-center gap-4 px-5 py-3 rounded-xl font-bold text-sm transition-all hover:scale-[1.02] active:scale-95 ${
                     btn.color.includes('bg-slate-100') ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' : btn.color
                   } ${btn.disabled ? 'opacity-30 cursor-not-allowed scale-100' : ''}`}
                 >
@@ -1016,10 +1037,50 @@ const LedgerView = () => {
                   {btn.name}
                 </button>
               ))}
-              <div className="hidden lg:block lg:flex-grow"></div>
-
+              <div className="flex-grow"></div>
             </div>
           </div>
+
+          {/* Mobile Actions Drawer overlay */}
+          {isSidebarOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden">
+              {/* Backdrop */}
+              <div 
+                className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200" 
+                onClick={() => setIsSidebarOpen(false)}
+              />
+              {/* Drawer Content */}
+              <div className="fixed inset-x-0 bottom-0 max-h-[85vh] bg-white dark:bg-slate-900 rounded-t-[2rem] border-t border-slate-200 dark:border-slate-800 p-6 shadow-2xl overflow-y-auto transition-transform duration-300 ease-out animate-in slide-in-from-bottom">
+                <div className="flex items-center justify-between mb-5">
+                  <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Actions</h3>
+                  <button 
+                    onClick={() => setIsSidebarOpen(false)}
+                    className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 dark:text-slate-500 transition-all"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3 pb-4">
+                  {sidebarButtons.map((btn) => (
+                    <button 
+                      key={btn.name} 
+                      onClick={() => {
+                        setIsSidebarOpen(false);
+                        btn.action();
+                      }} 
+                      disabled={btn.disabled} 
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl font-bold text-xs transition-all active:scale-95 ${
+                        btn.color.includes('bg-slate-100') ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' : btn.color
+                      } ${btn.disabled ? 'opacity-30 cursor-not-allowed scale-100' : ''}`}
+                    >
+                      {btn.icon}
+                      <span>{btn.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
       
