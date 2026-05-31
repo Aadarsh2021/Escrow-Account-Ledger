@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 export interface Party {
@@ -85,6 +85,14 @@ export const useLedgerTransactions = ({
     linkedParty: Party | null;
     linkedSearch: string;
   }>({ remarks: '', amount: '', linkedParty: null, linkedSearch: '' });
+
+  // Reset DC Report states when selected party changes
+  useEffect(() => {
+    setDcReportData(null);
+    setDcFromDate('');
+    setDcToDate('');
+    setIsDcModalOpen(false);
+  }, [selectedParty?.id]);
 
   const getBalance = async (partyId: string) => {
     const { data } = await supabase
