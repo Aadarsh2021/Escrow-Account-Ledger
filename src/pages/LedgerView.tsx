@@ -69,9 +69,6 @@ const LedgerView = () => {
   const [isOldRecordsView, setIsOldRecordsView] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   
-  // Reconciled/Checked transactions checklist state
-  const [checkedTnsIds, setCheckedTnsIds] = useState<Set<string>>(new Set());
-
   // Print Filter & Modal States
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printFilterType, setPrintFilterType] = useState<'all' | 'date'>('all');
@@ -79,58 +76,6 @@ const LedgerView = () => {
   const [printEndDate, setPrintEndDate] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Load checked transaction IDs for the selected party
-  useEffect(() => {
-    if (selectedParty) {
-      try {
-        const saved = localStorage.getItem(`checked_tns_${selectedParty.id}`);
-        setCheckedTnsIds(saved ? new Set(JSON.parse(saved)) : new Set());
-      } catch (err) {
-        console.error('Error loading checked transactions:', err);
-        setCheckedTnsIds(new Set());
-      }
-    } else {
-      setCheckedTnsIds(new Set());
-    }
-  }, [selectedParty]);
-
-  const toggleCheckedTns = (tnsId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const newChecked = new Set(checkedTnsIds);
-    if (newChecked.has(tnsId)) {
-      newChecked.delete(tnsId);
-    } else {
-      newChecked.add(tnsId);
-    }
-    setCheckedTnsIds(newChecked);
-    if (selectedParty) {
-      try {
-        localStorage.setItem(`checked_tns_${selectedParty.id}`, JSON.stringify(Array.from(newChecked)));
-      } catch (err) {
-        console.error('Error saving checked transactions:', err);
-      }
-    }
-  };
-
-  const toggleSelectAllChecked = () => {
-    if (checkedTnsIds.size === transactions.length) {
-      setCheckedTnsIds(new Set());
-      if (selectedParty) {
-        localStorage.removeItem(`checked_tns_${selectedParty.id}`);
-      }
-    } else {
-      const newChecked = new Set<string>();
-      transactions.forEach(t => newChecked.add(t.id));
-      setCheckedTnsIds(newChecked);
-      if (selectedParty) {
-        try {
-          localStorage.setItem(`checked_tns_${selectedParty.id}`, JSON.stringify(Array.from(newChecked)));
-        } catch (err) {
-          console.error('Error saving checked transactions:', err);
-        }
-      }
-    }
-  };
   
   // Entry Form inputs
   const [amount, setAmount] = useState('');
@@ -231,6 +176,83 @@ const LedgerView = () => {
     isOldRecordsView,
     setConfirmDialog
   });
+
+  // Reconciled/Checked transactions checklist state & handlers (persisted in DB)
+  const [checkedTnsIds, setCheckedTnsIds] = useState<Set<string>>(new Set());
+
+  // Load checked transaction IDs for the selected party from database transactions
+  useEffect(() => {
+    if (selectedParty) {
+      const checked = new Set(
+        transactions
+          .filter(t => t.is_checked)
+          .map(t => t.id)
+      );
+      setCheckedTnsIds(checked);
+    } else {
+      setCheckedTnsIds(new Set());
+    }
+  }, [selectedParty, transactions]);
+
+  const toggleCheckedTns = async (tnsId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isCurrentlyChecked = checkedTnsIds.has(tnsId);
+    const newChecked = new Set(checkedTnsIds);
+    if (isCurrentlyChecked) {
+      newChecked.delete(tnsId);
+    } else {
+      newChecked.add(tnsId);
+    }
+    setCheckedTnsIds(newChecked);
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ is_checked: !isCurrentlyChecked })
+        .eq('id', tnsId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error toggling checked state in database:', err);
+      // Revert in case of failure
+      const reverted = new Set(checkedTnsIds);
+      if (isCurrentlyChecked) {
+        reverted.add(tnsId);
+      } else {
+        reverted.delete(tnsId);
+      }
+      setCheckedTnsIds(reverted);
+    }
+  };
+
+  const toggleSelectAllChecked = async () => {
+    const allChecked = checkedTnsIds.size === transactions.length && transactions.length > 0;
+    let newChecked: Set<string>;
+    let nextCheckedState: boolean;
+
+    if (allChecked) {
+      newChecked = new Set();
+      nextCheckedState = false;
+    } else {
+      newChecked = new Set(transactions.map(t => t.id));
+      nextCheckedState = true;
+    }
+
+    setCheckedTnsIds(newChecked);
+
+    try {
+      const tnsIdsToUpdate = transactions.map(t => t.id);
+      if (tnsIdsToUpdate.length === 0) return;
+      const { error } = await supabase
+        .from('transactions')
+        .update({ is_checked: nextCheckedState })
+        .in('id', tnsIdsToUpdate);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Error batch updating checked states in database:', err);
+      // Revert in case of failure
+      setCheckedTnsIds(checkedTnsIds);
+    }
+  };
 
   // Load parties list and click outside listeners on mount
   useEffect(() => {
@@ -874,33 +896,85 @@ const LedgerView = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
                       {transactions.map((t) => (
-                        <tr key={t.id} onClick={() => toggleTnsSelection(t.id)} className={`cursor-pointer transition-all ${selectedTnsIds.has(t.id) ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' : t.is_settlement ? 'bg-blue-50/50 dark:bg-blue-950/20' : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'}`}>
+                        <tr 
+                          key={t.id} 
+                          onClick={() => toggleTnsSelection(t.id)} 
+                          className={`cursor-pointer transition-all ${
+                            selectedTnsIds.has(t.id) 
+                              ? 'bg-blue-600 dark:bg-blue-900 text-white shadow-lg' 
+                              : t.is_settlement 
+                                ? 'bg-blue-50/50 dark:bg-blue-950/20' 
+                                : t.is_modified
+                                  ? 'bg-sky-50/70 dark:bg-sky-950/30 border-l-4 border-sky-500 hover:bg-sky-100/70 dark:hover:bg-sky-950/50'
+                                  : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'
+                          }`}
+                        >
                           <td className="px-3 md:px-6 py-2.5 md:py-3 text-center">
                             <div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}>
                               <div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div>
                             </div>
                           </td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-[10px] whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-slate-400 dark:text-slate-500'}`}>{new Date(t.transaction_date).toLocaleDateString()}</td>
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-[10px] whitespace-nowrap ${
+                            selectedTnsIds.has(t.id) 
+                              ? 'text-blue-100' 
+                              : t.is_modified 
+                                ? 'text-sky-600 dark:text-sky-400 font-bold' 
+                                : 'text-slate-400 dark:text-slate-500'
+                          }`}>
+                            {new Date(t.transaction_date).toLocaleDateString()}
+                          </td>
                           <td className="px-3 md:px-6 py-2.5 md:py-3 font-bold whitespace-nowrap">
                             {!t.is_settlement && (
-                              <span className={`uppercase text-[11px] font-black ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-slate-900 dark:text-slate-100'}`}>
+                              <span className={`uppercase text-[11px] font-black ${
+                                selectedTnsIds.has(t.id) 
+                                  ? 'text-white' 
+                                  : t.is_modified 
+                                    ? 'text-sky-700 dark:text-sky-300 font-extrabold' 
+                                    : 'text-slate-900 dark:text-slate-100'
+                              }`}>
                                 {t.partner_party_name || '-'}
                               </span>
                             )}
                             {t.remarks && (
-                              <span className={`ml-2 text-xs font-medium italic ${selectedTnsIds.has(t.id) ? 'text-blue-100' : t.is_settlement ? 'text-blue-700 dark:text-blue-455 font-bold' : 'text-slate-400 dark:text-slate-500'}`}>
+                              <span className={`ml-2 text-xs font-medium italic ${
+                                selectedTnsIds.has(t.id) 
+                                  ? 'text-blue-100' 
+                                  : t.is_settlement 
+                                    ? 'text-blue-700 dark:text-blue-455 font-bold' 
+                                    : t.is_modified
+                                      ? 'text-sky-500 dark:text-sky-400 font-semibold'
+                                      : 'text-slate-400 dark:text-slate-500'
+                              }`}>
                                 ({t.remarks})
                               </span>
                             )}
                           </td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-emerald-600 dark:text-emerald-455 font-bold'}`}>{t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString()}` : '-'}</td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-white' : 'text-rose-600 dark:text-rose-455 font-bold'}`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${
+                            selectedTnsIds.has(t.id) 
+                              ? 'text-white' 
+                              : t.is_modified
+                                ? 'text-sky-600 dark:text-sky-400 font-bold'
+                                : 'text-emerald-600 dark:text-emerald-455 font-bold'
+                          }`}>{t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString()}` : '-'}</td>
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${
+                            selectedTnsIds.has(t.id) 
+                              ? 'text-white' 
+                              : t.is_modified
+                                ? 'text-sky-600 dark:text-sky-400 font-bold'
+                                : 'text-rose-600 dark:text-rose-455 font-bold'
+                          }`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
                           <td className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
                             <div onClick={(e) => toggleCheckedTns(t.id, e)} className={`w-5 h-5 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.has(t.id) ? (selectedTnsIds.has(t.id) ? 'bg-white border-white text-blue-600' : 'bg-emerald-500 border-emerald-500 text-white') : (selectedTnsIds.has(t.id) ? 'border-blue-200 text-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
                               {checkedTnsIds.has(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
                           </td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right font-black whitespace-nowrap ${selectedTnsIds.has(t.id) ? 'text-white' : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455')}`}>₹ {Math.round(Math.abs(t.balance)).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
+                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right font-black whitespace-nowrap ${
+                            selectedTnsIds.has(t.id) 
+                              ? 'text-white' 
+                              : t.is_modified
+                                ? 'text-sky-700 dark:text-sky-300'
+                                : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455')
+                          }`}>₹ {Math.round(Math.abs(t.balance)).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
                         </tr>
                       ))}
                     </tbody>

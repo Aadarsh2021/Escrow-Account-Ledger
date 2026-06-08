@@ -26,6 +26,8 @@ export interface Transaction {
   is_finalized?: boolean;
   settlement_id?: string;
   created_at?: string;
+  is_modified?: boolean;
+  is_checked?: boolean;
 }
 
 const generateUUID = () => {
@@ -482,7 +484,8 @@ export const useLedgerTransactions = ({
           debit: debitA,
           balance: newBalA,
           transaction_date: tnsA.transaction_date,
-          created_at: tnsA.created_at
+          created_at: tnsA.created_at,
+          is_modified: true
         },
         {
           id: generateUUID(),
@@ -495,7 +498,8 @@ export const useLedgerTransactions = ({
           debit: debitB,
           balance: newBalB,
           transaction_date: tnsA.transaction_date,
-          created_at: tnsA.created_at
+          created_at: tnsA.created_at,
+          is_modified: true
         }
       ]);
 

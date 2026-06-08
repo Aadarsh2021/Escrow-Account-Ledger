@@ -32,6 +32,7 @@ interface Transaction {
     sr_no: string;
   };
   partner_party_name?: string;
+  is_checked?: boolean;
 }
 
 interface PartyOption {
