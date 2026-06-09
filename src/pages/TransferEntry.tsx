@@ -1697,8 +1697,7 @@ const TransferEntry = () => {
 
           /* Card wrappers */
           .sheet-panels-grid > div {
-            display: flex !important;
-            flex-direction: column !important;
+            display: block !important;
             height: auto !important;
             min-height: auto !important;
             max-height: none !important;
