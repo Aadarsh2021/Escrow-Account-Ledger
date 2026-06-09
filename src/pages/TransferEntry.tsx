@@ -1215,35 +1215,37 @@ const TransferEntry = () => {
               }}
             >
               <SortableContext items={leftEntries.map(e => e.id)} strategy={verticalListSortingStrategy}>
-                <table className="w-full text-left text-xs font-bold border-collapse border border-[#D9D9D9] dark:border-slate-800">
-                  <thead>
-                    <tr className="bg-[#F2F2F2] dark:bg-slate-800 text-[10px] font-black text-slate-700 dark:text-slate-400 uppercase tracking-wider border-b border-[#BFBFBF] dark:border-slate-700 print:border-slate-300">
-                      <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800 w-16 text-center">SR NO.</th>
-                      <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800">CLIENT</th>
-                      <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">BALANCE</th>
-                      <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">FINAL BALANCE</th>
-                      <th className="py-2.5 px-3 text-center w-20 print:hidden">ACTION</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800 print:divide-slate-200">
-                    {leftEntries.map((entry, idx) => (
-                      <LeftSortableRow
-                        key={entry.id}
-                        entry={entry}
-                        idx={idx}
-                        onEdit={handleEditLeftEntryClick}
-                        onDelete={handleDeleteLeftEntry}
-                      />
-                    ))}
-                    {leftEntries.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="py-16 text-center text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900 border-b border-[#D9D9D9] dark:border-slate-800">
-                          No transfer entries added. Select a party and submit above.
-                        </td>
+                <div className="w-full overflow-x-auto scrollbar-thin">
+                  <table className="w-full text-left text-xs font-bold border-collapse border border-[#D9D9D9] dark:border-slate-800 min-w-[500px] sm:min-w-0">
+                    <thead>
+                      <tr className="bg-[#F2F2F2] dark:bg-slate-800 text-[10px] font-black text-slate-700 dark:text-slate-400 uppercase tracking-wider border-b border-[#BFBFBF] dark:border-slate-700 print:border-slate-300">
+                        <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800 w-16 text-center">SR NO.</th>
+                        <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800">CLIENT</th>
+                        <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">BALANCE</th>
+                        <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">FINAL BALANCE</th>
+                        <th className="py-2.5 px-3 text-center w-20 print:hidden">ACTION</th>
                       </tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800 print:divide-slate-200">
+                      {leftEntries.map((entry, idx) => (
+                        <LeftSortableRow
+                          key={entry.id}
+                          entry={entry}
+                          idx={idx}
+                          onEdit={handleEditLeftEntryClick}
+                          onDelete={handleDeleteLeftEntry}
+                        />
+                      ))}
+                      {leftEntries.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-16 text-center text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900 border-b border-[#D9D9D9] dark:border-slate-800">
+                            No transfer entries added. Select a party and submit above.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </SortableContext>
             </DndContext>
           </div>
@@ -1270,94 +1272,96 @@ const TransferEntry = () => {
           </div>
 
           <div className="p-6 flex-grow">
-            <table className="w-full text-left text-xs font-bold border-collapse border border-[#D9D9D9] dark:border-slate-800">
-              <thead>
-                <tr className="bg-[#F2F2F2] dark:bg-slate-800 text-[10px] font-black text-slate-700 dark:text-slate-400 uppercase tracking-wider border-b border-[#BFBFBF] dark:border-slate-700 print:border-slate-300">
-                  <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800">DETAIL</th>
-                  <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">BALANCE</th>
-                  <th className="py-2.5 px-3 text-center w-20 print:hidden">ACTION</th>
-                </tr>
-              </thead>
-
-              {/* Custom entries — drag only within this group */}
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event: DragEndEvent) => {
-                  const { active, over } = event;
-                  if (over && active.id !== over.id) {
-                    setCustomRightEntries(prev => {
-                      const customs = prev.filter(e => e.isCustom);
-                      const dbs = prev.filter(e => !e.isCustom);
-                      const oldIdx = customs.findIndex(e => e.id === active.id);
-                      const newIdx = customs.findIndex(e => e.id === over.id);
-                      if (oldIdx === -1 || newIdx === -1) return prev;
-                      return [...arrayMove(customs, oldIdx, newIdx), ...dbs];
-                    });
-                  }
-                }}
-              >
-                <SortableContext items={customPart.map(e => e.id!)} strategy={verticalListSortingStrategy}>
-                  <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
-                    {customPart.map((entry, idx) => (
-                      <RightSortableRow
-                        key={entry.id!}
-                        entry={entry}
-                        idx={idx}
-                        onEdit={handleEditRightEntryClick}
-                        onDelete={handleDeleteCustomRightEntry}
-                      />
-                    ))}
-                  </tbody>
-                </SortableContext>
-              </DndContext>
-
-              {/* DB / Remaining Parties — drag only within this group */}
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(event: DragEndEvent) => {
-                  const { active, over } = event;
-                  if (over && active.id !== over.id) {
-                    setCustomRightEntries(prev => {
-                      const customs = prev.filter(e => e.isCustom);
-                      const dbs = prev.filter(e => !e.isCustom);
-                      const oldIdx = dbs.findIndex(e => e.id === active.id);
-                      const newIdx = dbs.findIndex(e => e.id === over.id);
-                      if (oldIdx === -1 || newIdx === -1) return prev;
-                      return [...customs, ...arrayMove(dbs, oldIdx, newIdx)];
-                    });
-                  }
-                }}
-              >
-                <SortableContext items={dbPart.map(e => e.id!)} strategy={verticalListSortingStrategy}>
-                  <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
-                    {dbPart.map((entry, idx) => (
-                      <RightSortableRow
-                        key={entry.id!}
-                        entry={entry}
-                        idx={customPart.length + idx}
-                        onEdit={handleEditRightEntryClick}
-                        onDelete={handleDeleteCustomRightEntry}
-                      />
-                    ))}
-                  </tbody>
-                </SortableContext>
-              </DndContext>
-
-              {/* Empty state */}
-              {displayRightEntries.length === 0 && (
-                <tbody>
-                  <tr>
-                    <td colSpan={3} className="py-16 text-center text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900 border-b border-[#D9D9D9] dark:border-slate-800">
-                      {isSaved
-                        ? 'No remaining parties. All parties are included in the transfer list!'
-                        : 'Worksheet is not saved yet. Add entries and click "Save & Sync" in the left form.'}
-                    </td>
+            <div className="w-full overflow-x-auto scrollbar-thin">
+              <table className="w-full text-left text-xs font-bold border-collapse border border-[#D9D9D9] dark:border-slate-800 min-w-[400px] sm:min-w-0">
+                <thead>
+                  <tr className="bg-[#F2F2F2] dark:bg-slate-800 text-[10px] font-black text-slate-700 dark:text-slate-400 uppercase tracking-wider border-b border-[#BFBFBF] dark:border-slate-700 print:border-slate-300">
+                    <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800">DETAIL</th>
+                    <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">BALANCE</th>
+                    <th className="py-2.5 px-3 text-center w-20 print:hidden">ACTION</th>
                   </tr>
-                </tbody>
-              )}
-            </table>
+                </thead>
+
+                {/* Custom entries — drag only within this group */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event: DragEndEvent) => {
+                    const { active, over } = event;
+                    if (over && active.id !== over.id) {
+                      setCustomRightEntries(prev => {
+                        const customs = prev.filter(e => e.isCustom);
+                        const dbs = prev.filter(e => !e.isCustom);
+                        const oldIdx = customs.findIndex(e => e.id === active.id);
+                        const newIdx = customs.findIndex(e => e.id === over.id);
+                        if (oldIdx === -1 || newIdx === -1) return prev;
+                        return [...arrayMove(customs, oldIdx, newIdx), ...dbs];
+                      });
+                    }
+                  }}
+                >
+                  <SortableContext items={customPart.map(e => e.id!)} strategy={verticalListSortingStrategy}>
+                    <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
+                      {customPart.map((entry, idx) => (
+                        <RightSortableRow
+                          key={entry.id!}
+                          entry={entry}
+                          idx={idx}
+                          onEdit={handleEditRightEntryClick}
+                          onDelete={handleDeleteCustomRightEntry}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
+
+                {/* DB / Remaining Parties — drag only within this group */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={(event: DragEndEvent) => {
+                    const { active, over } = event;
+                    if (over && active.id !== over.id) {
+                      setCustomRightEntries(prev => {
+                        const customs = prev.filter(e => e.isCustom);
+                        const dbs = prev.filter(e => !e.isCustom);
+                        const oldIdx = dbs.findIndex(e => e.id === active.id);
+                        const newIdx = dbs.findIndex(e => e.id === over.id);
+                        if (oldIdx === -1 || newIdx === -1) return prev;
+                        return [...customs, ...arrayMove(dbs, oldIdx, newIdx)];
+                      });
+                    }
+                  }}
+                >
+                  <SortableContext items={dbPart.map(e => e.id!)} strategy={verticalListSortingStrategy}>
+                    <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
+                      {dbPart.map((entry, idx) => (
+                        <RightSortableRow
+                          key={entry.id!}
+                          entry={entry}
+                          idx={customPart.length + idx}
+                          onEdit={handleEditRightEntryClick}
+                          onDelete={handleDeleteCustomRightEntry}
+                        />
+                      ))}
+                    </tbody>
+                  </SortableContext>
+                </DndContext>
+
+                {/* Empty state */}
+                {displayRightEntries.length === 0 && (
+                  <tbody>
+                    <tr>
+                      <td colSpan={3} className="py-16 text-center text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900 border-b border-[#D9D9D9] dark:border-slate-800">
+                        {isSaved
+                          ? 'No remaining parties. All parties are included in the transfer list!'
+                          : 'Worksheet is not saved yet. Add entries and click "Save & Sync" in the left form.'}
+                      </td>
+                    </tr>
+                  </tbody>
+                )}
+              </table>
+            </div>
           </div>
 
 
@@ -1377,11 +1381,11 @@ const TransferEntry = () => {
       {/* Combined Grand Total Section */}
       <div className="mt-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm transition-colors duration-200 print:border-slate-850 print:rounded-none">
         {/* Excel-style FINAL TOTAL Banner */}
-        <div className="flex items-center justify-center max-w-2xl mx-auto border-2 border-slate-900 dark:border-slate-700 rounded-xl overflow-hidden font-black text-xl md:text-2xl shadow-md">
-          <div className="bg-[#FF0000] text-white px-6 py-4 flex items-center justify-center tracking-wider shrink-0 uppercase select-none w-1/2 text-center">
+        <div className="flex flex-col sm:flex-row items-stretch justify-center max-w-2xl mx-auto border-2 border-slate-900 dark:border-slate-700 rounded-xl overflow-hidden font-black text-xl md:text-2xl shadow-md">
+          <div className="bg-[#FF0000] text-white px-6 py-4 flex items-center justify-center tracking-wider shrink-0 uppercase select-none w-full sm:w-1/2 text-center border-b-2 sm:border-b-0 sm:border-r-2 border-slate-900 dark:border-slate-700">
             FINAL TOTAL
           </div>
-          <div className="bg-[#92D050] text-slate-900 px-6 py-4 flex items-center justify-center w-1/2 text-center truncate font-black">
+          <div className="bg-[#92D050] text-slate-900 px-6 py-4 flex items-center justify-center w-full sm:w-1/2 text-center truncate font-black">
             {(leftTotalFinal + rightTotalBalance) < 0 ? '- ' : ''}₹ {Math.round(Math.abs(leftTotalFinal + rightTotalBalance)).toLocaleString('en-IN')}
           </div>
         </div>
@@ -1489,27 +1493,178 @@ const TransferEntry = () => {
       {/* Print CSS Injector */}
       <style>{`
         @media print {
-          body {
+          /* Force page break behavior and clean up document styling */
+          html, body {
             background-color: white !important;
-            color: black !important;
+            background: white !important;
+            color: #0f172a !important; /* Slate 900 */
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            overflow-x: visible !important;
+            overflow-y: visible !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
-          nav, header, footer, .navbar, .navbar-container, .print\\:hidden {
+          
+          /* Hide non-printable UI elements */
+          nav, header, footer, .navbar, .navbar-container, .print\\:hidden, [class*="print:hidden"] {
             display: none !important;
           }
-          .transfer-entry-container {
-            max-width: 100% !important;
+          
+          /* Page wrapper overrides */
+          #root, main, .transfer-entry-container {
+            display: block !important;
+            height: auto !important;
+            min-height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
             padding: 0 !important;
             margin: 0 !important;
+            width: 100% !important;
+            max-width: 100% !important;
           }
+
+          /* Grid layout for the side-by-side panels in print */
           .sheet-panels-grid {
+            display: grid !important;
             grid-template-columns: 1fr 1fr !important;
             gap: 20px !important;
+            height: auto !important;
+            min-height: auto !important;
+            overflow: visible !important;
+            width: 100% !important;
           }
+
+          /* Card wrappers */
+          .sheet-panels-grid > div {
+            display: flex !important;
+            flex-direction: column !important;
+            height: auto !important;
+            min-height: auto !important;
+            max-height: none !important;
+            overflow: visible !important;
+            border: 1px solid #BFBFBF !important;
+            border-radius: 8px !important;
+            box-shadow: none !important;
+            background: white !important;
+            page-break-inside: auto !important;
+          }
+
+          /* Remove table padding and scroll wraps for printing */
+          .p-6, .px-6, .py-4, .py-5 {
+            padding: 12px !important;
+            overflow: visible !important;
+            height: auto !important;
+          }
+          
           table {
+            width: 100% !important;
+            border-collapse: collapse !important;
             font-size: 11px !important;
+            height: auto !important;
+            overflow: visible !important;
+            table-layout: auto !important;
           }
+          
+          thead {
+            display: table-header-group !important;
+          }
+          
           tr {
             page-break-inside: avoid !important;
+          }
+          
+          th, td {
+            padding: 6px 8px !important;
+            border: 1px solid #BFBFBF !important;
+            color: #0f172a !important;
+            background-color: transparent !important;
+          }
+
+          /* Prevent text truncation in table cells for client/party names */
+          td.truncate, .truncate {
+            max-width: none !important;
+            text-overflow: clip !important;
+            white-space: normal !important;
+            overflow: visible !important;
+          }
+
+          /* Force light-theme styling for dark elements in print */
+          .dark, .dark * {
+            background-color: transparent !important;
+            color: #0f172a !important;
+            border-color: #BFBFBF !important;
+          }
+
+          .bg-white, .dark\\:bg-slate-900 {
+            background-color: white !important;
+            background: white !important;
+            color: #0f172a !important;
+          }
+
+          /* Left and Right tables header backgrounds */
+          .bg-\\[\\#F2F2F2\\], .dark\\:bg-slate-800 {
+            background-color: #F2F2F2 !important;
+            color: #334155 !important;
+          }
+          
+          /* Left Table Total Footer */
+          .bg-\\[\\#FFF2CC\\], .dark\\:bg-\\[\\#3d3622\\]\\/40 {
+            background-color: #FFF2CC !important;
+            color: #0f172a !important;
+          }
+
+          /* Right Table Total Footer */
+          .bg-\\[\\#E2EFDA\\], .dark\\:bg-\\[\\#20321c\\]\\/40 {
+            background-color: #E2EFDA !important;
+            color: #0f172a !important;
+          }
+
+          /* Grand Total Banner */
+          .border-slate-900, .dark\\:border-slate-700 {
+            border-color: #0f172a !important;
+          }
+          .bg-\\[\\#FF0000\\] {
+            background-color: #FF0000 !important;
+            color: white !important;
+          }
+          .bg-\\[\\#92D050\\] {
+            background-color: #92D050 !important;
+            color: #0f172a !important;
+          }
+
+          /* Row colors (Left Table) in print */
+          .bg-\\[\\#FFD966\\] { background-color: #FFD966 !important; color: #0f172a !important; }
+          .bg-\\[\\#47C5CB\\] { background-color: #47C5CB !important; color: #0f172a !important; }
+          .bg-\\[\\#92D050\\] { background-color: #92D050 !important; color: #0f172a !important; }
+          .bg-\\[\\#FF7070\\] { background-color: #FF7070 !important; color: white !important; }
+          .bg-\\[\\#9DC3E6\\] { background-color: #9DC3E6 !important; color: #0f172a !important; }
+
+          /* Row colors (Right Table) in print */
+          .bg-\\[\\#E53935\\] { background-color: #E53935 !important; color: white !important; }
+          .bg-\\[\\#FDD835\\] { background-color: #FDD835 !important; color: #0f172a !important; }
+          .bg-\\[\\#43A047\\] { background-color: #43A047 !important; color: white !important; }
+          .bg-\\[\\#1565C0\\] { background-color: #1565C0 !important; color: white !important; }
+          .bg-\\[\\#B39DDB\\] { background-color: #B39DDB !important; color: #0f172a !important; }
+
+          /* Positive/Negative text adjustments */
+          .text-emerald-800, .dark\\:text-emerald-300, .text-emerald-700, .dark\\:text-emerald-400 {
+            color: #065f46 !important;
+          }
+          .text-red-800, .dark\\:text-red-300, .text-rose-700, .dark\\:text-rose-400 {
+            color: #991b1b !important;
+          }
+
+          .mt-6 {
+            margin-top: 24px !important;
+            page-break-inside: avoid !important;
+          }
+          
+          .max-w-2xl {
+            max-width: 100% !important;
           }
         }
       `}</style>
