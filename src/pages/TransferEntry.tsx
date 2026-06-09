@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -62,7 +62,7 @@ interface RightEntry {
 
 
 interface LeftEntry { id: string; partyId: string; partyName: string; amount: number; finalAmount: number; }
-function LeftSortableRow({ entry, idx, onEdit, onDelete }: {
+const LeftSortableRow = memo(function LeftSortableRow({ entry, idx, onEdit, onDelete }: {
   entry: LeftEntry;
   idx: number;
   onEdit: (idx: number) => void;
@@ -106,11 +106,11 @@ function LeftSortableRow({ entry, idx, onEdit, onDelete }: {
       </td>
     </tr>
   );
-}
+});
 
 // ─── Right Table Sortable Row ────────────────────────────────────────────────
 interface RightEntry2 { id?: string; partyId?: string; partyName: string; balance: number; isCustom: boolean; }
-function RightSortableRow({ entry, idx, onEdit, onDelete }: {
+const RightSortableRow = memo(function RightSortableRow({ entry, idx, onEdit, onDelete }: {
   entry: RightEntry2;
   idx: number;
   onEdit: (id: string, name: string, currentBal: number, isCustom: boolean) => void;
@@ -149,7 +149,7 @@ function RightSortableRow({ entry, idx, onEdit, onDelete }: {
       </td>
     </tr>
   );
-}
+});
 // ─────────────────────────────────────────────────────────────────────────────
 
 const generateUUID = () => {
@@ -366,33 +366,28 @@ const TransferEntry = () => {
 
       setParties(mappedParties);
 
-      // 2. Fetch saved transfer entries from Supabase
-      const { data: transferData, error: transferError } = await supabase
-        .from('transfer_entries')
-        .select(`
-          id,
-          party_id,
-          amount,
-          final_amount,
-          parties (
-            party_name
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      const { data: customRightData, error: customRightError } = await supabase
-        .from('transfer_custom_right_entries')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: true });
-
-      // 4. Fetch sheet status from Supabase
-      const { data: statusData, error: statusError } = await supabase
-        .from('transfer_sheet_status')
-        .select('is_saved')
-        .eq('user_id', user.id)
-        .maybeSingle();
+      // 2-4. Fetch transfer data, custom right entries, and sheet status in PARALLEL
+      const [
+        { data: transferData, error: transferError },
+        { data: customRightData, error: customRightError },
+        { data: statusData, error: statusError },
+      ] = await Promise.all([
+        supabase
+          .from('transfer_entries')
+          .select(`id, party_id, amount, final_amount, parties ( party_name )`)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('transfer_custom_right_entries')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('transfer_sheet_status')
+          .select('is_saved')
+          .eq('user_id', user.id)
+          .maybeSingle(),
+      ]);
 
       if (transferError || customRightError || statusError) {
         const err = transferError || customRightError || statusError;
@@ -500,34 +495,62 @@ const TransferEntry = () => {
     fetchData();
   }, [user]);
 
-  // Filter parties for searchable dropdown
-  // Exclude parties already added to Left Table
-  const addedPartyIds = new Set(leftEntries.map(e => e.partyId));
-  const filteredParties = parties.filter(p => {
-    const matchesSearch = p.party_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          p.sr_no.toLowerCase().includes(searchQuery.toLowerCase());
-    const notAddedYet = !addedPartyIds.has(p.id);
-    const nonZero = p.balance !== 0;
-    return matchesSearch && notAddedYet && nonZero;
-  });
+  // Memoized derived data — prevents recomputation on unrelated renders
+  const addedPartyIds = useMemo(
+    () => new Set(leftEntries.map(e => e.partyId)),
+    [leftEntries]
+  );
 
-  const firstMatch = searchQuery && filteredParties.length > 0 ? filteredParties[0] : null;
+  const filteredParties = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return parties.filter(p => {
+      const matchesSearch = p.party_name.toLowerCase().includes(q) ||
+                            p.sr_no.toLowerCase().includes(q);
+      return matchesSearch && !addedPartyIds.has(p.id) && p.balance !== 0;
+    });
+  }, [parties, searchQuery, addedPartyIds]);
 
-  const handleSelectParty = (party: PartyBalance) => {
+  const firstMatch = useMemo(
+    () => (searchQuery && filteredParties.length > 0 ? filteredParties[0] : null),
+    [searchQuery, filteredParties]
+  );
+
+  const handleSelectParty = useCallback((party: PartyBalance) => {
     setSelectedParty(party);
     setSearchQuery(party.party_name);
-    // Amount is always the opposite of the report balance
-    const oppositeAmount = -party.balance;
-    // Set formatted opposite amount
-    setAmountInput(oppositeAmount.toString());
+    setAmountInput((-party.balance).toString());
     setIsDropdownOpen(false);
-  };
+  }, []);
 
-  const markUnsaved = () => {
+  // Hoisted before markUnsaved since markUnsaved calls it
+  const updateDbSheetStatus = useCallback(async (savedVal: boolean) => {
+    if (dbMissing || !user) return;
+    try {
+      await supabase
+        .from('transfer_sheet_status')
+        .upsert({ user_id: user.id, is_saved: savedVal, updated_at: new Date().toISOString() });
+
+      if (!savedVal) {
+        const dbPartyNames = parties.map(p => p.party_name);
+        if (dbPartyNames.length > 0) {
+          await supabase
+            .from('transfer_custom_right_entries')
+            .delete()
+            .eq('user_id', user.id)
+            .in('party_name', dbPartyNames);
+        }
+      }
+    } catch (err) {
+      console.error('Error updating sheet status in Supabase:', err);
+    }
+  }, [dbMissing, user, parties]);
+
+  const markUnsaved = useCallback(() => {
     setIsSaved(false);
     setCustomRightEntries(prev => prev.filter(e => e.isCustom));
     updateDbSheetStatus(false);
-  };
+  }, [updateDbSheetStatus]);
+
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -612,7 +635,7 @@ const TransferEntry = () => {
     }
   };
 
-  const handleDeleteLeftEntry = async (idx: number) => {
+  const handleDeleteLeftEntry = useCallback(async (idx: number) => {
     const entryToDelete = leftEntries[idx];
     try {
       if (!dbMissing) {
@@ -620,19 +643,17 @@ const TransferEntry = () => {
           .from('transfer_entries')
           .delete()
           .eq('id', entryToDelete.id);
-        
         if (error) throw error;
       }
-
       setLeftEntries(prev => prev.filter((_, i) => i !== idx));
       markUnsaved();
     } catch (err) {
       console.error('Error deleting transfer entry:', err);
       alert('Failed to delete from Supabase: ' + (err as any).message);
     }
-  };
+  }, [leftEntries, dbMissing, markUnsaved]);
 
-  const handleEditLeftEntryClick = (idx: number) => {
+  const handleEditLeftEntryClick = useCallback((idx: number) => {
     const entry = leftEntries[idx];
     setEditModalData({
       type: 'left',
@@ -643,19 +664,13 @@ const TransferEntry = () => {
     });
     setEditModalInputValue(entry.amount.toString());
     setIsEditModalOpen(true);
-  };
+  }, [leftEntries]);
 
-  const handleEditRightEntryClick = (id: string, name: string, currentBalance: number, isCustom: boolean) => {
-    setEditModalData({
-      type: 'right',
-      id: id,
-      name: name,
-      value: currentBalance,
-      isCustom: isCustom
-    });
+  const handleEditRightEntryClick = useCallback((id: string, name: string, currentBalance: number, isCustom: boolean) => {
+    setEditModalData({ type: 'right', id, name, value: currentBalance, isCustom });
     setEditModalInputValue(currentBalance.toString());
     setIsEditModalOpen(true);
-  };
+  }, []);
 
   const handleSaveEditModal = async () => {
     if (!editModalData) return;
@@ -709,29 +724,8 @@ const TransferEntry = () => {
     setEditModalData(null);
   };
 
-  const updateDbSheetStatus = async (savedVal: boolean) => {
-    if (dbMissing || !user) return;
-    try {
-      await supabase
-        .from('transfer_sheet_status')
-        .upsert({ user_id: user.id, is_saved: savedVal, updated_at: new Date().toISOString() });
 
-      if (!savedVal) {
-        const dbPartyNames = parties.map(p => p.party_name);
-        if (dbPartyNames.length > 0) {
-          await supabase
-            .from('transfer_custom_right_entries')
-            .delete()
-            .eq('user_id', user.id)
-            .in('party_name', dbPartyNames);
-        }
-      }
-    } catch (err) {
-      console.error('Error updating sheet status in Supabase:', err);
-    }
-  };
-
-  const handleSaveAndPopulateRight = async () => {
+  const handleSaveAndPopulateRight = useCallback(async () => {
     if (!user) return;
     
     // Collect all parties of this user that are not in left entries and have non-zero balance
@@ -800,7 +794,7 @@ const TransferEntry = () => {
       console.error('Error saving remaining parties:', err);
       alert('Failed to save remaining parties: ' + (err as any).message);
     }
-  };
+  }, [user, parties, addedPartyIds, dbMissing, updateDbSheetStatus]);
 
   // Submit manual custom right entry
   const handleSubmitCustomRight = async (e: React.FormEvent) => {
@@ -856,15 +850,13 @@ const TransferEntry = () => {
     }
   };
 
-  // Delete manual custom right entry
-  const handleDeleteCustomRightEntry = async (id: string) => {
+  const handleDeleteCustomRightEntry = useCallback(async (id: string) => {
     try {
       if (!dbMissing) {
         const { error } = await supabase
           .from('transfer_custom_right_entries')
           .delete()
           .eq('id', id);
-
         if (error) throw error;
       }
       setCustomRightEntries(prev => prev.filter(e => e.id !== id));
@@ -872,24 +864,15 @@ const TransferEntry = () => {
       console.error('Error deleting custom right entry:', err);
       alert('Failed to delete custom entry from Supabase: ' + (err as any).message);
     }
-  };
+  }, [dbMissing]);
 
-
-
-  const handleReset = async () => {
+  const handleReset = useCallback(async () => {
     try {
       if (!dbMissing && user) {
-        // Delete all transfer entries for the user
-        await supabase
-          .from('transfer_entries')
-          .delete()
-          .eq('user_id', user.id);
-
-        // Delete all custom right entries for the user
-        await supabase
-          .from('transfer_custom_right_entries')
-          .delete()
-          .eq('user_id', user.id);
+        await Promise.all([
+          supabase.from('transfer_entries').delete().eq('user_id', user.id),
+          supabase.from('transfer_custom_right_entries').delete().eq('user_id', user.id),
+        ]);
       }
       setLeftEntries([]);
       setCustomRightEntries([]);
@@ -905,27 +888,30 @@ const TransferEntry = () => {
       console.error('Error resetting sheet:', err);
       alert('Failed to clear from Supabase: ' + (err as any).message);
     }
-  };
+  }, [dbMissing, user, updateDbSheetStatus]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = useCallback(() => window.print(), []);
+
+  // Memoized computed values — recalculated only when dependencies change
+  const leftTotalFinal = useMemo(
+    () => leftEntries.reduce((sum, e) => sum + e.finalAmount, 0),
+    [leftEntries]
+  );
+
+  const { customPart, dbPart, displayRightEntries, rightTotalBalance } = useMemo(() => {
+    const source = isSaved ? customRightEntries : customRightEntries.filter(e => e.isCustom);
+    const customs = source.filter(e => e.isCustom);
+    const dbs = source.filter(e => !e.isCustom).sort((a, b) => a.partyName.localeCompare(b.partyName));
+    const display = [...customs, ...dbs];
+    return {
+      customPart: customs,
+      dbPart: dbs,
+      displayRightEntries: display,
+      rightTotalBalance: display.reduce((sum, e) => sum + (e.isCustom ? e.balance : -e.balance), 0),
+    };
+  }, [customRightEntries, isSaved]);
 
   if (loading) return <GlobalLoader fullScreen={true} />;
-
-  // Calculated Totals
-  const leftTotalFinal = leftEntries.reduce((sum, e) => sum + e.finalAmount, 0);
-
-  // Combine auto-populated and custom entries for Right Table display (custom entries always at the top)
-  const unsortedRight = isSaved
-    ? customRightEntries
-    : customRightEntries.filter(e => e.isCustom);
-  const customPart = unsortedRight.filter(e => e.isCustom);
-  const dbPart = unsortedRight.filter(e => !e.isCustom);
-  // Sort DB remaining entries consistently by name
-  dbPart.sort((a, b) => a.partyName.localeCompare(b.partyName));
-  const displayRightEntries = [...customPart, ...dbPart];
-  const rightTotalBalance = displayRightEntries.reduce((sum, e) => sum + (e.isCustom ? e.balance : -e.balance), 0);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-6 transfer-entry-container">
