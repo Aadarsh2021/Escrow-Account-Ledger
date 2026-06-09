@@ -41,6 +41,7 @@ const PartyReport = lazyRetry(() => import('./pages/PartyReport'));
 const BalanceSheet = lazyRetry(() => import('./pages/BalanceSheet'));
 const ProfitLossReport = lazyRetry(() => import('./pages/ProfitLossReport'));
 const TransactionReport = lazyRetry(() => import('./pages/TransactionReport'));
+const TransferEntry = lazyRetry(() => import('./pages/TransferEntry'));
 const AdminLogin = lazyRetry(() => import('./pages/AdminLogin'));
 const AdminDashboard = lazyRetry(() => import('./pages/AdminDashboard'));
 
@@ -163,6 +164,14 @@ const AppContent = () => {
               element={
                 <ProtectedRoute>
                   <TransactionReport />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/transfer-entry" 
+              element={
+                <ProtectedRoute>
+                  <TransferEntry />
                 </ProtectedRoute>
               } 
             />

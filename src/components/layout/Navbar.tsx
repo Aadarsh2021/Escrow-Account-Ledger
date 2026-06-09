@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ChevronDown, 
   User, 
@@ -28,6 +28,7 @@ const Navbar = () => {
   const { user, profile, signOut } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
@@ -88,26 +89,26 @@ const Navbar = () => {
   ];
 
   return (
-    <nav className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50 w-full transition-colors duration-200" ref={dropdownRef}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <nav className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 sticky top-0 z-50 w-full transition-all duration-200" ref={dropdownRef}>
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 xl:px-12">
         <div className="flex justify-between h-16 items-center">
           {/* Logo - Uses Dynamic Company Name */}
-          <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2.5 group">
-            <img src="/logo.png" alt="Logo" className="w-8 h-8 object-contain transition-transform duration-200 group-hover:scale-105" />
-            <span className="text-xl font-bold tracking-tight text-slate-900 dark:text-white hidden sm:block">
+          <Link to={user ? "/dashboard" : "/"} className="flex items-center gap-2 group shrink-0">
+            <img src="/logo.png" alt="Logo" className="w-7 h-7 object-contain transition-transform duration-200 group-hover:scale-105" />
+            <span className="text-lg font-black tracking-tight text-slate-900 dark:text-white hidden sm:block">
               {displayCompanyName}
             </span>
           </Link>
 
           {/* Desktop Menu */}
-          <div className="hidden md:flex items-center space-x-1">
+          <div className="hidden md:flex items-center gap-1 lg:gap-2.5 xl:gap-3.5">
             {user && navItems.map((item) => (
               <div key={item.name} className="relative">
                 <button
                   onClick={() => setActiveDropdown(activeDropdown === item.name ? null : item.name)}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                  className={`px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 ${
                     activeDropdown === item.name 
-                      ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' 
+                      ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 font-bold' 
                       : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400'
                   }`}
                 >
@@ -133,14 +134,28 @@ const Navbar = () => {
                 )}
               </div>
             ))}
+            {user && (
+              <Link
+                to="/transfer-entry"
+                onClick={() => setActiveDropdown(null)}
+                className={`px-3 py-1.5 lg:px-4 lg:py-2 rounded-xl text-sm font-semibold transition-all flex items-center gap-1.5 ${
+                  location.pathname === '/transfer-entry'
+                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 font-bold'
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400'
+                }`}
+              >
+                <RefreshCw className="w-4 h-4" />
+                Transfer Entry
+              </Link>
+            )}
           </div>
 
           {/* Right Side Actions */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5 lg:gap-3.5">
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg transition-colors border border-slate-200 dark:border-slate-700 shadow-sm"
+              className="p-2.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 rounded-xl transition-all border border-slate-200/50 dark:border-slate-800 shadow-sm active:scale-95"
               title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
             >
               {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -150,7 +165,7 @@ const Navbar = () => {
               <div className="relative">
                 <button
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
-                  className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 p-1.5 pr-3 rounded-full transition-all border border-slate-200 dark:border-slate-700"
+                  className="flex items-center gap-2 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-750 p-1.5 pr-3 rounded-2xl transition-all border border-slate-200/50 dark:border-slate-800 shadow-sm active:scale-95"
                 >
                   <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white font-bold overflow-hidden">
                     {user.user_metadata?.avatar_url ? (
@@ -233,6 +248,24 @@ const Navbar = () => {
                   </div>
                 </div>
               ))}
+              {/* Mobile Transfer Entry Link */}
+              {user && (
+                <Link
+                  to="/transfer-entry"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className={`flex items-center justify-between p-4 rounded-2xl font-bold transition-colors ${
+                    location.pathname === '/transfer-entry'
+                      ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                      : 'text-slate-700 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <RefreshCw className="w-5 h-5" />
+                    <span className="text-sm">Transfer Entry</span>
+                  </div>
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                </Link>
+              )}
               {/* Mobile Profile Link */}
               {user && (
                 <Link
