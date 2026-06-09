@@ -29,7 +29,8 @@ import {
   Info,
   Pencil,
   X,
-  GripVertical
+  GripVertical,
+  AlertTriangle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -233,6 +234,11 @@ const TransferEntry = () => {
   } | null>(null);
   const [editModalInputValue, setEditModalInputValue] = useState('');
 
+  // Reset Sheet Modal State
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [resetStep, setResetStep] = useState<1 | 2>(1);
+  const [resetConfirmText, setResetConfirmText] = useState('');
+
   const [deductionInput, setDeductionInput] = useState(() => {
     try {
       return localStorage.getItem('transfer_deduction_input') || '';
@@ -395,11 +401,18 @@ const TransferEntry = () => {
           // Table doesn't exist yet, show warning banner
           setDbMissing(true);
 
-          // Update local state leftEntries with latest party balances
+          // Update local state leftEntries with latest party balances, respecting manual edits
+          let cachedEdited: string[] = [];
+          try {
+            const raw = localStorage.getItem('transfer_edited_party_ids');
+            cachedEdited = raw ? JSON.parse(raw) : [];
+          } catch {}
+
           setLeftEntries(prev => {
             const updated = prev.map(entry => {
               const party = mappedParties.find(p => p.id === entry.partyId);
-              if (party) {
+              const isEdited = cachedEdited.includes(entry.partyId);
+              if (party && !isEdited) {
                 const currentDbAmount = -party.balance;
                 const currentDbFinalAmount = Number((currentDbAmount * 0.965).toFixed(2));
                 return {
@@ -441,25 +454,65 @@ const TransferEntry = () => {
           if (statusError) throw statusError;
         }
       } else {
-        // Load left entries using saved amounts (preserves manual edits)
+        // Load left entries
         const mappedLeftEntries: LeftEntry[] = [];
+        const updatesToMake: Array<{ id: string; amount: number; final_amount: number }> = [];
+
+        // Parse local storage edited list to check
+        let cachedEdited: string[] = [];
+        try {
+          const raw = localStorage.getItem('transfer_edited_party_ids');
+          cachedEdited = raw ? JSON.parse(raw) : [];
+        } catch {}
 
         for (const t of (transferData || [])) {
-          // Always use the SAVED amount from Supabase — do NOT overwrite with live party balance.
-          // This preserves manually edited values across refreshes.
-          const savedAmount = Number(t.amount);
-          const savedFinalAmount = Number(t.final_amount);
+          const party = mappedParties.find(p => p.id === t.party_id);
+          const isEdited = cachedEdited.includes(t.party_id);
+
+          let finalAmount = Number(t.amount);
+          let finalFinalAmount = Number(t.final_amount);
+
+          if (!isEdited && party) {
+            // Live party balance (opposite sign: Debit/Take is positive, Credit/Give is negative)
+            const liveAmount = -party.balance;
+            const liveFinalAmount = Number((liveAmount * 0.965).toFixed(2));
+
+            // If the saved value is different from the live database value, prepare to update it
+            if (Number(t.amount) !== liveAmount) {
+              finalAmount = liveAmount;
+              finalFinalAmount = liveFinalAmount;
+              updatesToMake.push({
+                id: t.id,
+                amount: liveAmount,
+                final_amount: liveFinalAmount
+              });
+            }
+          }
 
           mappedLeftEntries.push({
             id: t.id,
             partyId: t.party_id,
             partyName: (t.parties as any)?.party_name || 'Unknown',
-            amount: savedAmount,
-            finalAmount: savedFinalAmount
+            amount: finalAmount,
+            finalAmount: finalFinalAmount
           });
         }
 
         setLeftEntries(mappedLeftEntries);
+
+        // Perform any necessary auto-sync updates in the background (Supabase)
+        if (updatesToMake.length > 0 && !dbMissing) {
+          Promise.all(
+            updatesToMake.map(up =>
+              supabase
+                .from('transfer_entries')
+                .update({ amount: up.amount, final_amount: up.final_amount })
+                .eq('id', up.id)
+            )
+          ).catch(err => {
+            console.error('Error during auto-sync of left entries:', err);
+          });
+        }
 
         const dbPartyNames = new Set(mappedParties.map(p => p.party_name));
         const mappedCustomRight: RightEntry[] = (customRightData || []).map(t => {
@@ -550,6 +603,7 @@ const TransferEntry = () => {
     setCustomRightEntries(prev => prev.filter(e => e.isCustom));
     updateDbSheetStatus(false);
   }, [updateDbSheetStatus]);
+
 
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
@@ -866,7 +920,13 @@ const TransferEntry = () => {
     }
   }, [dbMissing]);
 
-  const handleReset = useCallback(async () => {
+  const handleResetClick = useCallback(() => {
+    setResetStep(1);
+    setResetConfirmText('');
+    setIsResetModalOpen(true);
+  }, []);
+
+  const handleResetExecute = useCallback(async () => {
     try {
       if (!dbMissing && user) {
         await Promise.all([
@@ -882,8 +942,9 @@ const TransferEntry = () => {
       setCustomRightName('');
       setCustomRightBalance('');
       setIsSaved(false);
-      updateDbSheetStatus(false);
+      await updateDbSheetStatus(false);
       setHighlightedIndex(0);
+      setIsResetModalOpen(false);
     } catch (err) {
       console.error('Error resetting sheet:', err);
       alert('Failed to clear from Supabase: ' + (err as any).message);
@@ -945,7 +1006,7 @@ const TransferEntry = () => {
           </button>
 
           <button 
-            onClick={handleReset}
+            onClick={handleResetClick}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-orange-50 hover:bg-orange-100 dark:bg-orange-950/20 dark:hover:bg-orange-900/30 text-orange-600 dark:text-orange-400 border border-orange-200/40 dark:border-orange-900/30 rounded-xl font-bold text-xs transition-all active:scale-95"
           >
             <RefreshCcw className="w-3.5 h-3.5" />
@@ -1485,6 +1546,102 @@ const TransferEntry = () => {
               >
                 Save Changes
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Double Confirmation Reset Modal */}
+      {isResetModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 print:hidden animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 transition-colors">
+            {/* Modal Header */}
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-orange-500" />
+                <h3 className="font-black text-slate-800 dark:text-white text-sm uppercase tracking-wider">
+                  Reset Worksheet (Step {resetStep} of 2)
+                </h3>
+              </div>
+              <button 
+                onClick={() => setIsResetModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {resetStep === 1 ? (
+                <div className="space-y-3">
+                  <p className="text-slate-700 dark:text-slate-300 text-sm font-bold leading-relaxed">
+                    Are you sure you want to reset the worksheet?
+                  </p>
+                  <p className="text-slate-500 dark:text-slate-400 text-xs leading-relaxed">
+                    This will clear all current transfer entries from the left and right tables in this session.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/40 p-3.5 rounded-xl text-rose-800 dark:text-rose-300 text-xs font-bold leading-relaxed flex gap-2">
+                    <Info className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-500 mt-0.5" />
+                    <span>
+                      WARNING: This action is irreversible. All saved entries will be permanently deleted from the database.
+                    </span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block">
+                      Type <span className="text-rose-600 dark:text-rose-400 font-black">RESET</span> to confirm
+                    </label>
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Type RESET here..."
+                      className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none font-black text-sm text-center uppercase tracking-widest focus:ring-4 focus:ring-rose-600/10 focus:border-rose-600 transition-all text-slate-800 dark:text-white"
+                      value={resetConfirmText}
+                      onChange={(e) => setResetConfirmText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && resetConfirmText.toUpperCase() === 'RESET') {
+                          e.preventDefault();
+                          handleResetExecute();
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs uppercase tracking-wider transition-all active:scale-95"
+              >
+                Cancel
+              </button>
+              
+              {resetStep === 1 ? (
+                <button
+                  type="button"
+                  onClick={() => setResetStep(2)}
+                  className="px-5 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-md shadow-orange-100 dark:shadow-none transition-all active:scale-95"
+                >
+                  Continue
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={resetConfirmText.toUpperCase() !== 'RESET'}
+                  onClick={handleResetExecute}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-md shadow-rose-100 dark:shadow-none transition-all active:scale-95"
+                >
+                  Permanently Reset
+                </button>
+              )}
             </div>
           </div>
         </div>
