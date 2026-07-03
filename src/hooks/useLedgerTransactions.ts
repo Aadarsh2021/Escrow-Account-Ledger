@@ -26,6 +26,7 @@ export interface Transaction {
   is_finalized?: boolean;
   settlement_id?: string;
   created_at?: string;
+  updated_at?: string;
   is_modified?: boolean;
   is_checked?: boolean;
 }
@@ -485,6 +486,7 @@ export const useLedgerTransactions = ({
           balance: newBalA,
           transaction_date: tnsA.transaction_date,
           created_at: tnsA.created_at,
+          updated_at: new Date().toISOString(),
           is_modified: true
         },
         {
@@ -499,6 +501,7 @@ export const useLedgerTransactions = ({
           balance: newBalB,
           transaction_date: tnsA.transaction_date,
           created_at: tnsA.created_at,
+          updated_at: new Date().toISOString(),
           is_modified: true
         }
       ]);

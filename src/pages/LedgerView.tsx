@@ -39,6 +39,20 @@ import { useLedgerTransactions, type Party } from '../hooks/useLedgerTransaction
 
 const ITEMS_PER_PAGE = 20;
 
+const formatTime = (dateStr?: string) => {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  } catch {
+    return '-';
+  }
+};
+
 const LedgerView = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -877,21 +891,22 @@ const LedgerView = () => {
                   <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
                       <tr>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12">
                           <div onClick={toggleSelectAllTns} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${selectedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-blue-600 border-blue-600' : 'border-slate-300 dark:border-slate-700'}`}>
                             {selectedTnsIds.size === transactions.length && transactions.length > 0 && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}
                           </div>
                         </th>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 whitespace-nowrap">Date</th>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 whitespace-nowrap">Particulars / Remarks</th>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap">Credit</th>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap">Debit</th>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 whitespace-nowrap">Date</th>
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 whitespace-nowrap">Particulars / Remarks</th>
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Credit</th>
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Debit</th>
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12">
                           <div onClick={(e) => { e.stopPropagation(); toggleSelectAllChecked(); }} className={`w-4 h-4 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 dark:border-slate-700'}`}>
                             {checkedTnsIds.size === transactions.length && transactions.length > 0 && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
                           </div>
                         </th>
-                        <th className="px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap">Balance</th>
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Balance</th>
+                        <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Time</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
@@ -909,12 +924,12 @@ const LedgerView = () => {
                                   : 'hover:bg-slate-50/50 dark:hover:bg-slate-950/20'
                           }`}
                         >
-                          <td className="px-3 md:px-6 py-2.5 md:py-3 text-center">
+                          <td className="px-1.5 md:px-3 py-1.5 md:py-2 text-center">
                             <div className={`w-5 h-5 rounded-lg border-2 mx-auto transition-all flex items-center justify-center ${selectedTnsIds.has(t.id) ? 'bg-white border-white shadow-md shadow-blue-800 dark:shadow-none' : 'border-slate-200 dark:border-slate-700'}`}>
                               <div className={`w-2 h-2 bg-blue-600 rounded-sm transition-opacity ${selectedTnsIds.has(t.id) ? 'opacity-100' : 'opacity-0'}`}></div>
                             </div>
                           </td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-[10px] whitespace-nowrap ${
+                          <td className={`px-1.5 md:px-3 py-1.5 md:py-2 text-[10px] whitespace-nowrap ${
                             selectedTnsIds.has(t.id) 
                               ? 'text-blue-100' 
                               : t.is_modified 
@@ -923,7 +938,7 @@ const LedgerView = () => {
                           }`}>
                             {new Date(t.transaction_date).toLocaleDateString()}
                           </td>
-                          <td className="px-3 md:px-6 py-2.5 md:py-3 font-bold whitespace-nowrap">
+                          <td className="px-1.5 md:px-3 py-1.5 md:py-2 font-bold whitespace-nowrap">
                             {!t.is_settlement && (
                               <span className={`uppercase text-[11px] font-black ${
                                 selectedTnsIds.has(t.id) 
@@ -949,32 +964,44 @@ const LedgerView = () => {
                               </span>
                             )}
                           </td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${
+                          <td className={`px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap ${
                             selectedTnsIds.has(t.id) 
                               ? 'text-white' 
                               : t.is_modified
                                 ? 'text-sky-600 dark:text-sky-400 font-bold'
                                 : 'text-emerald-600 dark:text-emerald-455 font-bold'
                           }`}>{t.credit > 0 ? `₹ ${Math.round(t.credit).toLocaleString()}` : '-'}</td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right whitespace-nowrap ${
+                          <td className={`px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap ${
                             selectedTnsIds.has(t.id) 
                               ? 'text-white' 
                               : t.is_modified
                                 ? 'text-sky-600 dark:text-sky-400 font-bold'
                                 : 'text-rose-600 dark:text-rose-455 font-bold'
                           }`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
-                          <td className="px-3 md:px-6 py-2.5 md:py-3 text-center w-12">
+                          <td className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12">
                             <div onClick={(e) => toggleCheckedTns(t.id, e)} className={`w-5 h-5 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.has(t.id) ? (selectedTnsIds.has(t.id) ? 'bg-white border-white text-blue-600' : 'bg-emerald-500 border-emerald-500 text-white') : (selectedTnsIds.has(t.id) ? 'border-blue-200 text-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
                               {checkedTnsIds.has(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
                             </div>
                           </td>
-                          <td className={`px-3 md:px-6 py-2.5 md:py-3 text-right font-black whitespace-nowrap ${
+                          <td className={`px-1.5 md:px-3 py-1.5 md:py-2 text-right font-black whitespace-nowrap ${
                             selectedTnsIds.has(t.id) 
                               ? 'text-white' 
                               : t.is_modified
                                 ? 'text-sky-700 dark:text-sky-300'
                                 : (t.balance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455')
                           }`}>₹ {Math.round(Math.abs(t.balance)).toLocaleString()} {t.balance >= 0 ? 'Cr' : 'Dr'}</td>
+                          <td className={`px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap ${
+                            selectedTnsIds.has(t.id) ? 'text-white' : 'text-slate-500 dark:text-slate-400'
+                          }`}>
+                            <div className="flex flex-col text-[11px] font-bold text-right leading-tight">
+                              <span>{formatTime(t.created_at)}</span>
+                              {t.is_modified && (
+                                <span className={`text-[9px] font-bold ${selectedTnsIds.has(t.id) ? 'text-blue-100' : 'text-sky-600 dark:text-sky-400'}`}>
+                                  Mod: {formatTime(t.updated_at || t.created_at)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

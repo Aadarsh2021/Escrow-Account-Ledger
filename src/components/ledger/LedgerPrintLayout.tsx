@@ -1,5 +1,19 @@
 import type { Party, Transaction } from '../../hooks/useLedgerTransactions';
 
+const formatTime = (dateStr?: string) => {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return '-';
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const ss = String(date.getSeconds()).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  } catch {
+    return '-';
+  }
+};
+
 interface LedgerPrintLayoutProps {
   selectedParty: Party;
   printTransactions: Transaction[];
@@ -143,9 +157,10 @@ export const LedgerPrintLayout = ({
             <tr>
               <th className="w-24 text-center">Date</th>
               <th>Particulars / Remarks</th>
-              <th className="w-36 text-right">Credit (₹)</th>
-              <th className="w-36 text-right">Debit (₹)</th>
-              <th className="w-40 text-right">Balance (₹)</th>
+              <th className="w-28 text-right">Credit (₹)</th>
+              <th className="w-28 text-right">Debit (₹)</th>
+              <th className="w-32 text-right">Balance (₹)</th>
+              <th className="w-28 text-right">Time</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 font-medium">
@@ -162,6 +177,7 @@ export const LedgerPrintLayout = ({
                 <td className={`text-right font-black ${printOpeningBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   ₹ {Math.round(Math.abs(printOpeningBalance)).toLocaleString('en-IN')} {printOpeningBalance >= 0 ? 'Cr' : 'Dr'}
                 </td>
+                <td className="text-right text-slate-400 font-bold">-</td>
               </tr>
             )}
             {printTransactions.map((t) => (
@@ -193,6 +209,16 @@ export const LedgerPrintLayout = ({
                 </td>
                 <td className={`text-right font-black ${t.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
                   ₹ {Math.round(Math.abs(t.balance)).toLocaleString('en-IN')} {t.balance >= 0 ? 'Cr' : 'Dr'}
+                </td>
+                <td className="text-right text-slate-600 font-bold text-[9px]">
+                  <div className="flex flex-col leading-tight">
+                    <span>{formatTime(t.created_at)}</span>
+                    {t.is_modified && (
+                      <span className="text-[8px] text-sky-600 font-bold">
+                        Mod: {formatTime(t.updated_at || t.created_at)}
+                      </span>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}

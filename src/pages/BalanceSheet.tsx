@@ -278,59 +278,91 @@ const BalanceSheet = () => {
           </div>
 
           {/* Sub-columns container */}
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800 print:p-2 print:divide-slate-300">
-            {/* Table Column 1 */}
-            <div className="pr-0 md:pr-2 pb-4 md:pb-0">
-              <table className="w-full text-left text-xs font-bold">
-                <thead>
-                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
-                    <th className="py-2">Name</th>
-                    <th className="py-2 text-right">Amount (Cr)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
-                  {creditCol1.map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
-                      <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
-                        {p.party_name}
-                      </td>
-                      <td className="py-2 text-right text-emerald-600 dark:text-emerald-450 font-extrabold">
-                        ₹ {p.balance.toLocaleString('en-IN')}
-                      </td>
+          <div className="p-6 flex-grow print:p-2">
+            {/* Desktop Layout: Two parallel columns (hidden on mobile, grid on md+) */}
+            <div className="hidden md:grid grid-cols-2 gap-4 divide-x divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
+              {/* Table Column 1 */}
+              <div className="pr-2">
+                <table className="w-full text-left text-xs font-bold">
+                  <thead>
+                    <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
+                      <th className="py-2">Name</th>
+                      <th className="py-2 text-right">Amount (Cr)</th>
                     </tr>
-                  ))}
-                  {creditCol1.length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
+                    {creditCol1.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                        <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                          {p.party_name}
+                        </td>
+                        <td className="py-2 text-right text-emerald-600 dark:text-emerald-455 font-extrabold">
+                          ₹ {p.balance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                    {creditCol1.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Column 2 */}
+              <div className="pl-4 print:pl-2">
+                <table className="w-full text-left text-xs font-bold">
+                  <thead>
+                    <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
+                      <th className="py-2">Name</th>
+                      <th className="py-2 text-right">Amount (Cr)</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
+                    {creditCol2.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                        <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                          {p.party_name}
+                        </td>
+                        <td className="py-2 text-right text-emerald-600 dark:text-emerald-455 font-extrabold">
+                          ₹ {p.balance.toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                    {creditCol2.length === 0 && creditCol1.length > 0 && (
+                      <tr>
+                        <td colSpan={2} className="py-2 text-center text-slate-300 dark:text-slate-600 italic">-</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Table Column 2 */}
-            <div className="pl-0 md:pl-4 pt-4 md:pt-0 print:pl-2 print:pt-0">
+            {/* Mobile Layout: Single unified table (visible on mobile, hidden on md+) */}
+            <div className="block md:hidden">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
-                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
+                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                     <th className="py-2">Name</th>
                     <th className="py-2 text-right">Amount (Cr)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
-                  {creditCol2.map(p => (
+                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
+                  {paginatedCredit.map(p => (
                     <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
                       <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
                         {p.party_name}
                       </td>
-                      <td className="py-2 text-right text-emerald-600 dark:text-emerald-450 font-extrabold">
+                      <td className="py-2 text-right text-emerald-600 dark:text-emerald-455 font-extrabold">
                         ₹ {p.balance.toLocaleString('en-IN')}
                       </td>
                     </tr>
                   ))}
-                  {creditCol2.length === 0 && creditCol1.length > 0 && (
+                  {paginatedCredit.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="py-2 text-center text-slate-300 dark:text-slate-600 italic">-</td>
+                      <td colSpan={2} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
                     </tr>
                   )}
                 </tbody>
@@ -378,59 +410,91 @@ const BalanceSheet = () => {
           </div>
 
           {/* Sub-columns container */}
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800 print:p-2 print:divide-slate-300">
-            {/* Table Column 1 */}
-            <div className="pr-0 md:pr-2 pb-4 md:pb-0">
-              <table className="w-full text-left text-xs font-bold">
-                <thead>
-                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
-                    <th className="py-2">Name</th>
-                    <th className="py-2 text-right">Amount (Dr)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
-                  {debitCol1.map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
-                      <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
-                        {p.party_name}
-                      </td>
-                      <td className="py-2 text-right text-rose-600 dark:text-rose-400 font-extrabold">
-                        ₹ {Math.abs(p.balance).toLocaleString('en-IN')}
-                      </td>
+          <div className="p-6 flex-grow print:p-2">
+            {/* Desktop Layout: Two parallel columns (hidden on mobile, grid on md+) */}
+            <div className="hidden md:grid grid-cols-2 gap-4 divide-x divide-slate-100 dark:divide-slate-800 print:divide-slate-300">
+              {/* Table Column 1 */}
+              <div className="pr-2">
+                <table className="w-full text-left text-xs font-bold">
+                  <thead>
+                    <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
+                      <th className="py-2">Name</th>
+                      <th className="py-2 text-right">Amount (Dr)</th>
                     </tr>
-                  ))}
-                  {debitCol1.length === 0 && (
-                    <tr>
-                      <td colSpan={2} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
+                    {debitCol1.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                        <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                          {p.party_name}
+                        </td>
+                        <td className="py-2 text-right text-rose-600 dark:text-rose-455 font-extrabold">
+                          ₹ {Math.abs(p.balance).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                    {debitCol1.length === 0 && (
+                      <tr>
+                        <td colSpan={2} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Column 2 */}
+              <div className="pl-4 print:pl-2">
+                <table className="w-full text-left text-xs font-bold">
+                  <thead>
+                    <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
+                      <th className="py-2">Name</th>
+                      <th className="py-2 text-right">Amount (Dr)</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
+                    {debitCol2.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                        <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                          {p.party_name}
+                        </td>
+                        <td className="py-2 text-right text-rose-600 dark:text-rose-455 font-extrabold">
+                          ₹ {Math.abs(p.balance).toLocaleString('en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                    {debitCol2.length === 0 && debitCol1.length > 0 && (
+                      <tr>
+                        <td colSpan={2} className="py-2 text-center text-slate-300 dark:text-slate-600 italic">-</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Table Column 2 */}
-            <div className="pl-0 md:pl-4 pt-4 md:pt-0 print:pl-2 print:pt-0">
+            {/* Mobile Layout: Single unified table (visible on mobile, hidden on md+) */}
+            <div className="block md:hidden">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
-                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800 print:border-slate-300">
+                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                     <th className="py-2">Name</th>
                     <th className="py-2 text-right">Amount (Dr)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40 print:divide-slate-200">
-                  {debitCol2.map(p => (
+                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
+                  {paginatedDebit.map(p => (
                     <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
                       <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
                         {p.party_name}
                       </td>
-                      <td className="py-2 text-right text-rose-600 dark:text-rose-400 font-extrabold">
+                      <td className="py-2 text-right text-rose-600 dark:text-rose-455 font-extrabold">
                         ₹ {Math.abs(p.balance).toLocaleString('en-IN')}
                       </td>
                     </tr>
                   ))}
-                  {debitCol2.length === 0 && debitCol1.length > 0 && (
+                  {paginatedDebit.length === 0 && (
                     <tr>
-                      <td colSpan={2} className="py-2 text-center text-slate-300 dark:text-slate-600 italic">-</td>
+                      <td colSpan={2} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
                     </tr>
                   )}
                 </tbody>
@@ -586,44 +650,82 @@ const BalanceSheet = () => {
             </span>
           </div>
 
-          <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-4 flex-grow divide-y md:divide-y-0 md:divide-x divide-slate-100 dark:divide-slate-800">
-            {/* Table Column 1 */}
-            <div className="pr-0 md:pr-2 pb-4 md:pb-0">
-              <table className="w-full text-left text-xs font-bold">
-                <thead>
-                  <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                    <th className="py-2 w-12">SR</th>
-                    <th className="py-2">Name</th>
-                    <th className="py-2 text-center">Status</th>
-                    <th className="py-2 text-right">Amount</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
-                  {zeroCol1.map(p => (
-                    <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
-                      <td className="py-2 text-slate-400 dark:text-slate-500 font-bold">{p.sr_no}</td>
-                      <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
-                        {p.party_name}
-                      </td>
-                      <td className="py-2 text-center">
-                        <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30 dark:border-emerald-900/30">
-                          Settled
-                        </span>
-                      </td>
-                      <td className="py-2 text-right text-slate-400 dark:text-slate-500">₹ 0</td>
+          <div className="p-6 flex-grow">
+            {/* Desktop Layout: Two parallel columns (hidden on mobile, grid on md+) */}
+            <div className="hidden md:grid grid-cols-2 gap-4 divide-x divide-slate-100 dark:divide-slate-800">
+              {/* Table Column 1 */}
+              <div className="pr-2">
+                <table className="w-full text-left text-xs font-bold">
+                  <thead>
+                    <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      <th className="py-2 w-12">SR</th>
+                      <th className="py-2">Name</th>
+                      <th className="py-2 text-center">Status</th>
+                      <th className="py-2 text-right">Amount</th>
                     </tr>
-                  ))}
-                  {zeroCol1.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
+                    {zeroCol1.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                        <td className="py-2 text-slate-400 dark:text-slate-500 font-bold">{p.sr_no}</td>
+                        <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                          {p.party_name}
+                        </td>
+                        <td className="py-2 text-center">
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30 dark:border-emerald-900/30">
+                            Settled
+                          </span>
+                        </td>
+                        <td className="py-2 text-right text-slate-400 dark:text-slate-500">₹ 0</td>
+                      </tr>
+                    ))}
+                    {zeroCol1.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Table Column 2 */}
+              <div className="pl-4">
+                <table className="w-full text-left text-xs font-bold">
+                  <thead>
+                    <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                      <th className="py-2 w-12">SR</th>
+                      <th className="py-2">Name</th>
+                      <th className="py-2 text-center">Status</th>
+                      <th className="py-2 text-right">Amount</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
+                    {zeroCol2.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
+                        <td className="py-2 text-slate-400 dark:text-slate-500 font-bold">{p.sr_no}</td>
+                        <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
+                          {p.party_name}
+                        </td>
+                        <td className="py-2 text-center">
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100/30 dark:border-emerald-900/30">
+                            Settled
+                          </span>
+                        </td>
+                        <td className="py-2 text-right text-slate-400 dark:text-slate-500">₹ 0</td>
+                      </tr>
+                    ))}
+                    {zeroCol2.length === 0 && zeroCol1.length > 0 && (
+                      <tr>
+                        <td colSpan={4} className="py-2 text-center text-slate-300 dark:text-slate-650 italic">-</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
-            {/* Table Column 2 */}
-            <div className="pl-0 md:pl-4 pt-4 md:pt-0">
+            {/* Mobile Layout: Single unified table (visible on mobile, hidden on md+) */}
+            <div className="block md:hidden">
               <table className="w-full text-left text-xs font-bold">
                 <thead>
                   <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
@@ -634,7 +736,7 @@ const BalanceSheet = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50/60 dark:divide-slate-800/40">
-                  {zeroCol2.map(p => (
+                  {paginatedZero.map(p => (
                     <tr key={p.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-all">
                       <td className="py-2 text-slate-400 dark:text-slate-500 font-bold">{p.sr_no}</td>
                       <td className="py-2 text-slate-700 dark:text-slate-300 max-w-[120px] truncate" title={p.party_name}>
@@ -648,9 +750,9 @@ const BalanceSheet = () => {
                       <td className="py-2 text-right text-slate-400 dark:text-slate-500">₹ 0</td>
                     </tr>
                   ))}
-                  {zeroCol2.length === 0 && zeroCol1.length > 0 && (
+                  {paginatedZero.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="py-2 text-center text-slate-300 dark:text-slate-650 italic">-</td>
+                      <td colSpan={4} className="py-10 text-center text-slate-400 dark:text-slate-500 italic">No records.</td>
                     </tr>
                   )}
                 </tbody>

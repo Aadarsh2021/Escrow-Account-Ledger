@@ -33,6 +33,8 @@ interface Transaction {
   };
   partner_party_name?: string;
   is_checked?: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface PartyOption {

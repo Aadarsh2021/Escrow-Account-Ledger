@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   ChevronDown, 
@@ -218,10 +219,10 @@ const Navbar = () => {
       </div>
 
       {/* Mobile Menu Bottom Drawer */}
-      {isMobileMenuOpen && (
+      {isMobileMenuOpen && createPortal(
         <>
-          <div className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[80]" onClick={() => setIsMobileMenuOpen(false)} />
-          <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-6 space-y-6 shadow-2xl rounded-t-[2.5rem] overflow-y-auto max-h-[70vh] z-[90] transition-colors duration-200 animate-in slide-in-from-bottom-5">
+          <div className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-[2px] z-[42]" onClick={() => setIsMobileMenuOpen(false)} />
+          <div className="md:hidden fixed bottom-16 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-6 space-y-6 shadow-2xl rounded-t-[2.5rem] overflow-y-auto max-h-[70vh] z-[45] transition-colors duration-200 animate-in slide-in-from-bottom-5">
             <div className="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
               <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">Navigation Menu</span>
               <button onClick={() => setIsMobileMenuOpen(false)} className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-all"><X className="w-5 h-5" /></button>
@@ -242,7 +243,7 @@ const Navbar = () => {
                         className="flex flex-col justify-between p-3 bg-slate-50 dark:bg-slate-950 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl transition-all border border-slate-100 dark:border-slate-900/30"
                       >
                         <div className="text-slate-400 dark:text-slate-500 mb-1">{sub.icon}</div>
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-350 tracking-tight leading-tight">{sub.name}</span>
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-355 tracking-tight leading-tight">{sub.name}</span>
                       </Link>
                     ))}
                   </div>
@@ -282,12 +283,13 @@ const Navbar = () => {
               )}
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
 
       {/* Mobile Bottom Tab Bar */}
-      {user && (
-        <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 flex justify-around items-center z-[100] shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
+      {user && createPortal(
+        <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 flex justify-around items-center z-40 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
           <Link to="/dashboard" className="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
             <BarChart3 className="w-5 h-5" />
             <span className="text-[9px] font-black uppercase tracking-wider">Home</span>
@@ -308,7 +310,8 @@ const Navbar = () => {
             <Menu className="w-5 h-5" />
             <span className="text-[9px] font-black uppercase tracking-wider">Menu</span>
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </nav>
   );
