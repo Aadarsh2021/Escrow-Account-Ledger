@@ -78,29 +78,39 @@ const LeftSortableRow = memo(function LeftSortableRow({ entry, idx, onEdit, onDe
     zIndex: isDragging ? 999 : undefined,
   };
   const rowColor = getLeftRowColor(idx);
+  const isRedRow = idx >= 8 && idx < 10;
+  
+  const amountColorClass = isRedRow 
+    ? 'text-black dark:text-[#FF9999]' 
+    : (entry.amount >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300');
+    
+  const finalAmountColorClass = isRedRow 
+    ? 'text-black dark:text-[#FF9999]' 
+    : (entry.finalAmount >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300');
+
   return (
     <tr ref={setNodeRef} style={style} className={`${rowColor} hover:opacity-90 transition-opacity`}>
-      <td className="py-2.5 px-3 border-r border-b border-[#D9D9D9] dark:border-slate-700 text-center font-black">
+      <td className={`py-2.5 px-3 border-r border-b border-[#D9D9D9] dark:border-slate-700 text-center font-black ${isRedRow ? 'text-black dark:text-[#FF9999]' : ''}`}>
         {idx + 1}
       </td>
-      <td className="py-2.5 px-3 border-r border-b border-[#D9D9D9] dark:border-slate-700 font-extrabold max-w-[140px] truncate" title={entry.partyName}>
+      <td className={`py-2.5 px-3 border-r border-b border-[#D9D9D9] dark:border-slate-700 font-extrabold max-w-[140px] truncate ${isRedRow ? 'text-black dark:text-[#FF9999]' : ''}`} title={entry.partyName}>
         {entry.partyName}
       </td>
-      <td className={`py-2.5 px-3 text-right border-r border-b border-[#D9D9D9] dark:border-slate-700 font-bold ${entry.amount >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
-        {entry.amount < 0 ? '- ' : ''}₹ {Math.round(Math.abs(entry.amount)).toLocaleString('en-IN')}
+      <td className={`py-2.5 px-3 text-right border-r border-b border-[#D9D9D9] dark:border-slate-700 font-bold ${amountColorClass}`}>
+        {entry.amount < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs(entry.amount)).toLocaleString('en-IN')}
       </td>
-      <td className={`py-2.5 px-3 text-right border-r border-b border-[#D9D9D9] dark:border-slate-700 font-black text-sm ${entry.finalAmount >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
-        {entry.finalAmount < 0 ? '- ' : ''}₹ {Math.round(Math.abs(entry.finalAmount)).toLocaleString('en-IN')}
+      <td className={`py-2.5 px-3 text-right border-r border-b border-[#D9D9D9] dark:border-slate-700 font-black text-sm ${finalAmountColorClass}`}>
+        {entry.finalAmount < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs(entry.finalAmount)).toLocaleString('en-IN')}
       </td>
       <td className="py-2.5 px-2 text-center border-b border-[#D9D9D9] dark:border-slate-700 print:hidden">
         <div className="flex items-center justify-center gap-1">
-          <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 touch-none select-none" title="Drag to reorder">
+          <span {...attributes} {...listeners} className={`cursor-grab active:cursor-grabbing hover:opacity-80 touch-none select-none ${isRedRow ? 'text-black dark:text-[#FF9999]' : 'text-slate-500 dark:text-slate-400'}`} title="Drag to reorder">
             <GripVertical className="w-3.5 h-3.5" />
           </span>
-          <button onClick={() => onEdit(idx)} className="p-1 hover:bg-black/10 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 rounded transition-all active:scale-90" title="Edit balance">
+          <button onClick={() => onEdit(idx)} className={`p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-all active:scale-90 ${isRedRow ? 'text-black dark:text-[#FF9999]' : 'text-slate-700 dark:text-slate-300'}`} title="Edit balance">
             <Pencil className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => onDelete(idx)} className="p-1 hover:bg-red-900/20 text-red-700 dark:text-red-400 rounded transition-all active:scale-90" title="Delete entry">
+          <button onClick={() => onDelete(idx)} className={`p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-all active:scale-90 ${isRedRow ? 'text-black dark:text-[#FF9999]' : 'text-red-700 dark:text-red-400'}`} title="Delete entry">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -109,41 +119,32 @@ const LeftSortableRow = memo(function LeftSortableRow({ entry, idx, onEdit, onDe
   );
 });
 
-// ─── Right Table Sortable Row ────────────────────────────────────────────────
-interface RightEntry2 { id?: string; partyId?: string; partyName: string; balance: number; isCustom: boolean; }
-const RightSortableRow = memo(function RightSortableRow({ entry, idx, onEdit, onDelete }: {
-  entry: RightEntry2;
-  idx: number;
+const RightRow = memo(function RightRow({ entry, onEdit, onDelete }: {
+  entry: RightEntry;
   onEdit: (id: string, name: string, currentBal: number, isCustom: boolean) => void;
   onDelete: (id: string) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: entry.id! });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.45 : 1,
-    position: isDragging ? 'relative' as const : undefined,
-    zIndex: isDragging ? 999 : undefined,
-  };
   const displayBal = entry.isCustom ? entry.balance : -entry.balance;
-  const rowColor = getRightRowColor(entry as RightEntry, idx);
+  const rowColor = getRightRowColor(entry);
+  const isRedRow = entry.isCustom;
+  const amountColorClass = isRedRow 
+    ? 'text-black dark:text-[#FF8A80]' 
+    : (displayBal >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300');
+
   return (
-    <tr ref={setNodeRef} style={style} className={`${rowColor} hover:opacity-90 transition-opacity`}>
-      <td className="py-2.5 px-3 border-r border-b border-[#D9D9D9] dark:border-slate-700 font-extrabold max-w-[180px] truncate" title={entry.partyName}>
+    <tr className={`${rowColor} hover:opacity-90 transition-opacity`}>
+      <td className={`py-2.5 px-3 border-r border-b border-[#D9D9D9] dark:border-slate-700 font-extrabold max-w-[180px] truncate ${isRedRow ? 'text-black dark:text-[#FF8A80]' : ''}`} title={entry.partyName}>
         {entry.partyName}
       </td>
-      <td className={`py-2.5 px-3 text-right border-r border-b border-[#D9D9D9] dark:border-slate-700 font-black ${displayBal >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-red-800 dark:text-red-300'}`}>
-        {displayBal < 0 ? '- ' : ''}₹ {Math.round(Math.abs(displayBal)).toLocaleString('en-IN')}
+      <td className={`py-2.5 px-3 text-right border-r border-b border-[#D9D9D9] dark:border-slate-700 font-black ${amountColorClass}`}>
+        {displayBal < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs(displayBal)).toLocaleString('en-IN')}
       </td>
       <td className="py-2.5 px-2 text-center border-b border-[#D9D9D9] dark:border-slate-700 print:hidden">
         <div className="flex items-center justify-center gap-1">
-          <span {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 touch-none select-none" title="Drag to reorder">
-            <GripVertical className="w-3.5 h-3.5" />
-          </span>
-          <button onClick={() => onEdit(entry.id!, entry.partyName, displayBal, entry.isCustom)} className="p-1 hover:bg-black/10 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 rounded transition-all active:scale-90" title="Edit balance">
+          <button onClick={() => onEdit(entry.id!, entry.partyName, displayBal, entry.isCustom)} className={`p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-all active:scale-90 ${isRedRow ? 'text-black dark:text-[#FF8A80]' : 'text-slate-700 dark:text-slate-300'}`} title="Edit balance">
             <Pencil className="w-3.5 h-3.5" />
           </button>
-          <button onClick={() => onDelete(entry.id!)} className="p-1 hover:bg-red-900/20 text-red-700 dark:text-red-400 rounded transition-all active:scale-90" title="Delete entry">
+          <button onClick={() => onDelete(entry.id!)} className={`p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-all active:scale-90 ${isRedRow ? 'text-black dark:text-[#FF8A80]' : 'text-red-700 dark:text-red-400'}`} title="Delete entry">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
@@ -151,7 +152,6 @@ const RightSortableRow = memo(function RightSortableRow({ entry, idx, onEdit, on
     </tr>
   );
 });
-// ─────────────────────────────────────────────────────────────────────────────
 
 const generateUUID = () => {
   return typeof crypto.randomUUID === 'function'
@@ -161,6 +161,25 @@ const generateUUID = () => {
         const v = c === 'x' ? r : (r & 0x3 | 0x8);
         return v.toString(16);
       });
+};
+
+const sortLeftEntries = (entries: LeftEntry[]): LeftEntry[] => {
+  return entries;
+};
+
+const sortRightEntries = (entries: RightEntry[]): RightEntry[] => {
+  const getDisplayBal = (e: RightEntry) => e.isCustom ? e.balance : -e.balance;
+  
+  const custom = entries.filter(e => e.isCustom);
+  const regular = entries.filter(e => !e.isCustom);
+
+  const sortSegment = (segment: RightEntry[]) => {
+    const negatives = segment.filter(e => getDisplayBal(e) < 0).sort((a, b) => Math.abs(getDisplayBal(b)) - Math.abs(getDisplayBal(a)));
+    const positives = segment.filter(e => getDisplayBal(e) >= 0).sort((a, b) => Math.abs(getDisplayBal(b)) - Math.abs(getDisplayBal(a)));
+    return [...negatives, ...positives];
+  };
+
+  return [...sortSegment(custom), ...sortSegment(regular)];
 };
 
 const getLeftRowColor = (idx: number) => {
@@ -174,26 +193,20 @@ const getLeftRowColor = (idx: number) => {
   }
   // Next 3: Vivid Green
   if (idx < 8) {
-    return 'bg-[#92D050] text-slate-900 dark:bg-[#1e3d04] dark:text-[#92D050] border-[#5fa020] dark:border-slate-700';
+    return 'bg-[#92D050] text-slate-900 dark:bg-[#1e3d04] dark:text-[#92D050] border-[#70ad47] dark:border-slate-700';
   }
-  // Next 2: Deep Red/Rose
+  // Next 2: Deep Red/Rose (text black in light mode)
   if (idx < 10) {
-    return 'bg-[#FF7070] text-white dark:bg-[#5c0a0a] dark:text-[#FF9999] border-[#cc3333] dark:border-slate-700';
+    return 'bg-[#FF7070] text-black dark:bg-[#5c0a0a] dark:text-[#FF9999] border-[#cc3333] dark:border-slate-700';
   }
   // Remaining: Deep Blue
   return 'bg-[#9DC3E6] text-slate-900 dark:bg-[#0d2a45] dark:text-[#9DC3E6] border-[#5a96c9] dark:border-slate-700';
 };
 
-const getRightRowColor = (entry: RightEntry, idx: number) => {
+const getRightRowColor = (entry: RightEntry) => {
   if (entry.isCustom) {
-    // Custom: Red, Yellow, Green, Dark Blue (4 colors)
-    const customColors = [
-      'bg-[#E53935] text-white dark:bg-[#4a0808] dark:text-[#FF8A80] border-[#b71c1c] dark:border-slate-700',        // Red
-      'bg-[#FDD835] text-slate-900 dark:bg-[#4a3b00] dark:text-[#FDD835] border-[#c6a800] dark:border-slate-700',    // Yellow
-      'bg-[#43A047] text-white dark:bg-[#0a2e0c] dark:text-[#A5D6A7] border-[#1B5E20] dark:border-slate-700',        // Green
-      'bg-[#1565C0] text-white dark:bg-[#051540] dark:text-[#90CAF9] border-[#0D47A1] dark:border-slate-700',        // Dark Blue
-    ];
-    return customColors[idx % customColors.length];
+    // Custom: Red (text black in light mode)
+    return 'bg-[#E53935] text-black dark:bg-[#4a0808] dark:text-[#FF8A80] border-[#b71c1c] dark:border-slate-700';
   } else {
     // Save & Sync ke baad wale DB entries: Lavender
     return 'bg-[#B39DDB] text-slate-900 dark:bg-[#2a1a4a] dark:text-[#D1C4E9] border-[#7B52AB] dark:border-slate-700';
@@ -259,7 +272,7 @@ const TransferEntry = () => {
   const [leftEntries, setLeftEntries] = useState<LeftEntry[]>(() => {
     try {
       const cached = localStorage.getItem('transfer_left_entries');
-      return cached ? JSON.parse(cached) : [];
+      return cached ? sortLeftEntries(JSON.parse(cached)) : [];
     } catch {
       return [];
     }
@@ -267,7 +280,7 @@ const TransferEntry = () => {
   const [customRightEntries, setCustomRightEntries] = useState<RightEntry[]>(() => {
     try {
       const cached = localStorage.getItem('transfer_custom_right_entries');
-      return cached ? JSON.parse(cached) : [];
+      return cached ? sortRightEntries(JSON.parse(cached)) : [];
     } catch {
       return [];
     }
@@ -320,7 +333,7 @@ const TransferEntry = () => {
     }
   }, [isSaved]);
 
-  const fetchData = async () => {
+  const fetchData = async (isManualRefresh = false) => {
     if (!user) return;
     try {
       setLoading(true);
@@ -408,6 +421,7 @@ const TransferEntry = () => {
             cachedEdited = raw ? JSON.parse(raw) : [];
           } catch {}
 
+          let updatedLeft: LeftEntry[] = [];
           setLeftEntries(prev => {
             const updated = prev.map(entry => {
               const party = mappedParties.find(p => p.id === entry.partyId);
@@ -423,30 +437,38 @@ const TransferEntry = () => {
               }
               return entry;
             });
+            updatedLeft = sortLeftEntries(updated);
             try {
-              localStorage.setItem('transfer_left_entries', JSON.stringify(updated));
+              localStorage.setItem('transfer_left_entries', JSON.stringify(updatedLeft));
             } catch (e) {
               console.error(e);
             }
-            return updated;
+            return updatedLeft;
           });
 
-          // If isSaved was true, populate right entries
+          // Sync Saved Status from Local Storage
           const isSavedVal = localStorage.getItem('transfer_is_saved') === 'true';
+          setIsSaved(isSavedVal);
+
+          // Synchronize Right entries for local storage
+          const savedCustom = customRightEntries.filter(e => e.isCustom);
           if (isSavedVal) {
-            const addedPartyIds = new Set(leftEntries.map(e => e.partyId));
-            const remainingParties = mappedParties.filter(p => !addedPartyIds.has(p.id) && p.balance !== 0);
-            const rightSideData: RightEntry[] = remainingParties.map(p => ({
-              id: generateUUID(),
-              partyId: p.id,
-              partyName: p.party_name,
-              balance: p.balance,
-              isCustom: false
-            }));
-            setCustomRightEntries(prev => {
-              const onlyCustom = prev.filter(e => e.isCustom);
-              return [...onlyCustom, ...rightSideData];
-            });
+            if (isManualRefresh) {
+              const currentLeftPartyIds = new Set(updatedLeft.map(e => e.partyId));
+              const remainingParties = mappedParties.filter(p => !currentLeftPartyIds.has(p.id) && p.balance !== 0);
+              const rightSideData: RightEntry[] = remainingParties.map(p => ({
+                id: generateUUID(),
+                partyId: p.id,
+                partyName: p.party_name,
+                balance: p.balance,
+                isCustom: false
+              }));
+              setCustomRightEntries(sortRightEntries([...savedCustom, ...rightSideData]));
+            } else {
+              // Keep customRightEntries as they are (loaded from localStorage on mount)
+            }
+          } else {
+            setCustomRightEntries(sortRightEntries(savedCustom));
           }
         } else {
           if (transferError) throw transferError;
@@ -498,7 +520,7 @@ const TransferEntry = () => {
           });
         }
 
-        setLeftEntries(mappedLeftEntries);
+        setLeftEntries(sortLeftEntries(mappedLeftEntries));
 
         // Perform any necessary auto-sync updates in the background (Supabase)
         if (updatesToMake.length > 0 && !dbMissing) {
@@ -514,20 +536,6 @@ const TransferEntry = () => {
           });
         }
 
-        const dbPartyNames = new Set(mappedParties.map(p => p.party_name));
-        const mappedCustomRight: RightEntry[] = (customRightData || []).map(t => {
-          const isDbParty = dbPartyNames.has(t.party_name);
-          // Always use the SAVED balance — never overwrite with live party balance.
-          // This preserves manually edited values across refreshes.
-          return {
-            id: t.id,
-            partyName: t.party_name,
-            balance: Number(t.balance),
-            isCustom: !isDbParty
-          };
-        });
-        setCustomRightEntries(mappedCustomRight);
-
         // Sync Saved Status from Supabase
         const dbIsSaved = statusData ? statusData.is_saved : false;
         setIsSaved(dbIsSaved);
@@ -536,6 +544,91 @@ const TransferEntry = () => {
         } catch (e) {
           console.error(e);
         }
+
+        // Synchronize Right entries:
+        const dbPartyNames = new Set(mappedParties.map(p => p.party_name));
+        const currentLeftPartyIds = new Set(mappedLeftEntries.map(e => e.partyId));
+        const liveRemainingParties = mappedParties.filter(p => !currentLeftPartyIds.has(p.id) && p.balance !== 0);
+
+        const savedCustomMapped: RightEntry[] = (customRightData || [])
+          .filter(t => !dbPartyNames.has(t.party_name))
+          .map(t => ({
+            id: t.id,
+            partyName: t.party_name,
+            balance: Number(t.balance),
+            isCustom: true
+          }));
+
+        let finalRightEntries: RightEntry[] = [];
+
+        if (dbIsSaved) {
+          if (isManualRefresh) {
+            const liveRightDbEntries: RightEntry[] = liveRemainingParties.map(p => {
+              const existing = (customRightData || []).find(t => t.party_name === p.party_name);
+              return {
+                id: existing ? existing.id : generateUUID(),
+                partyId: p.id,
+                partyName: p.party_name,
+                balance: p.balance,
+                isCustom: false
+              };
+            });
+
+            finalRightEntries = [...savedCustomMapped, ...liveRightDbEntries];
+
+            const savedDbEntries = (customRightData || []).filter(t => dbPartyNames.has(t.party_name));
+            const needsDbSync = savedDbEntries.length !== liveRightDbEntries.length ||
+              liveRightDbEntries.some(live => {
+                const saved = savedDbEntries.find(s => s.party_name === live.partyName);
+                return !saved || Number(saved.balance) !== live.balance;
+              });
+
+            if (needsDbSync && !dbMissing && user) {
+              (async () => {
+                try {
+                  const dbNames = Array.from(dbPartyNames);
+                  if (dbNames.length > 0) {
+                    await supabase
+                      .from('transfer_custom_right_entries')
+                      .delete()
+                      .eq('user_id', user.id)
+                      .in('party_name', dbNames);
+                  }
+                  if (liveRightDbEntries.length > 0) {
+                    const rowsToInsert = liveRightDbEntries.map(e => ({
+                      party_name: e.partyName,
+                      balance: e.balance,
+                      user_id: user.id
+                    }));
+                    await supabase.from('transfer_custom_right_entries').insert(rowsToInsert);
+                  }
+                } catch (err) {
+                  console.error('Error auto-syncing right DB entries to Supabase:', err);
+                }
+              })();
+            }
+          } else {
+            // Initial load / Auto-fetch: Load saved balances as they are from the Supabase table (no live overwriting)
+            const savedDbEntries: RightEntry[] = (customRightData || [])
+              .filter(t => dbPartyNames.has(t.party_name))
+              .map(t => {
+                const party = mappedParties.find(p => p.party_name === t.party_name);
+                return {
+                  id: t.id,
+                  partyId: party?.id,
+                  partyName: t.party_name,
+                  balance: Number(t.balance), // Keep saved balance
+                  isCustom: false
+                };
+              });
+
+            finalRightEntries = [...savedCustomMapped, ...savedDbEntries];
+          }
+        } else {
+          finalRightEntries = savedCustomMapped;
+        }
+
+        setCustomRightEntries(sortRightEntries(finalRightEntries));
       }
     } catch (err) {
       console.error('Error fetching parties for transfer:', err);
@@ -626,7 +719,7 @@ const TransferEntry = () => {
           amount: amt,
           finalAmount: finalAmt
         };
-        setLeftEntries(prev => [...prev, newEntry]);
+        setLeftEntries(prev => sortLeftEntries([...prev, newEntry]));
         setSelectedParty(null);
         setSearchQuery('');
         setAmountInput('');
@@ -669,7 +762,7 @@ const TransferEntry = () => {
           finalAmount: Number(data.final_amount)
         };
 
-        setLeftEntries(prev => [...prev, newEntry]);
+        setLeftEntries(prev => sortLeftEntries([...prev, newEntry]));
         
         // Clear Form
         setSelectedParty(null);
@@ -699,7 +792,7 @@ const TransferEntry = () => {
           .eq('id', entryToDelete.id);
         if (error) throw error;
       }
-      setLeftEntries(prev => prev.filter((_, i) => i !== idx));
+      setLeftEntries(prev => sortLeftEntries(prev.filter((_, i) => i !== idx)));
       markUnsaved();
     } catch (err) {
       console.error('Error deleting transfer entry:', err);
@@ -748,7 +841,7 @@ const TransferEntry = () => {
 
           if (error) throw error;
         }
-        setLeftEntries(prev => prev.map((e, i) => i === idx ? { ...e, amount: newValue, finalAmount: finalAmt } : e));
+        setLeftEntries(prev => sortLeftEntries(prev.map((e, i) => i === idx ? { ...e, amount: newValue, finalAmount: finalAmt } : e)));
         markUnsaved();
       } catch (err) {
         console.error('Error updating left entry:', err);
@@ -959,16 +1052,13 @@ const TransferEntry = () => {
     [leftEntries]
   );
 
-  const { customPart, dbPart, displayRightEntries, rightTotalBalance } = useMemo(() => {
+  const { displayRightEntries, rightTotalBalance } = useMemo(() => {
     const source = isSaved ? customRightEntries : customRightEntries.filter(e => e.isCustom);
-    const customs = source.filter(e => e.isCustom);
-    const dbs = source.filter(e => !e.isCustom).sort((a, b) => a.partyName.localeCompare(b.partyName));
-    const display = [...customs, ...dbs];
+    const sortedDisplay = sortRightEntries(source);
+    const getDisplayBal = (e: RightEntry) => e.isCustom ? e.balance : -e.balance;
     return {
-      customPart: customs,
-      dbPart: dbs,
-      displayRightEntries: display,
-      rightTotalBalance: display.reduce((sum, e) => sum + (e.isCustom ? e.balance : -e.balance), 0),
+      displayRightEntries: sortedDisplay,
+      rightTotalBalance: sortedDisplay.reduce((sum, e) => sum + getDisplayBal(e), 0),
     };
   }, [customRightEntries, isSaved]);
 
@@ -998,7 +1088,7 @@ const TransferEntry = () => {
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
           <button 
-            onClick={fetchData}
+            onClick={() => fetchData(true)}
             className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs transition-all active:scale-95"
           >
             <RefreshCcw className="w-3.5 h-3.5" />
@@ -1283,7 +1373,7 @@ const TransferEntry = () => {
                         <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800 w-16 text-center">SR NO.</th>
                         <th className="py-2.5 px-3 border-r border-[#D9D9D9] dark:border-slate-800">CLIENT</th>
                         <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">BALANCE</th>
-                        <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-800">FINAL BALANCE</th>
+                        <th className="py-2.5 px-3 text-right border-r border-[#D9D9D9] dark:border-slate-700">FINAL BALANCE</th>
                         <th className="py-2.5 px-3 text-center w-20 print:hidden">ACTION</th>
                       </tr>
                     </thead>
@@ -1315,7 +1405,7 @@ const TransferEntry = () => {
           <div className="px-6 py-4 bg-[#FFF2CC] dark:bg-[#3d3622]/40 border-t-2 border-b-4 border-[#BFBFBF] dark:border-slate-700 text-slate-800 dark:text-white font-black text-sm flex justify-between items-center tracking-tight">
             <span>Total Final Balance</span>
             <span className={leftTotalFinal >= 0 ? 'text-emerald-700 dark:text-emerald-400 text-base' : 'text-rose-700 dark:text-rose-400 text-base'}>
-              {leftTotalFinal < 0 ? '- ' : ''}₹ {Math.round(Math.abs(leftTotalFinal)).toLocaleString('en-IN')}
+              {leftTotalFinal < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs(leftTotalFinal)).toLocaleString('en-IN')}
             </span>
           </div>
         </div>
@@ -1342,76 +1432,16 @@ const TransferEntry = () => {
                     <th className="py-2.5 px-3 text-center w-20 print:hidden">ACTION</th>
                   </tr>
                 </thead>
-
-                {/* Custom entries — drag only within this group */}
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(event: DragEndEvent) => {
-                    const { active, over } = event;
-                    if (over && active.id !== over.id) {
-                      setCustomRightEntries(prev => {
-                        const customs = prev.filter(e => e.isCustom);
-                        const dbs = prev.filter(e => !e.isCustom);
-                        const oldIdx = customs.findIndex(e => e.id === active.id);
-                        const newIdx = customs.findIndex(e => e.id === over.id);
-                        if (oldIdx === -1 || newIdx === -1) return prev;
-                        return [...arrayMove(customs, oldIdx, newIdx), ...dbs];
-                      });
-                    }
-                  }}
-                >
-                  <SortableContext items={customPart.map(e => e.id!)} strategy={verticalListSortingStrategy}>
-                    <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
-                      {customPart.map((entry, idx) => (
-                        <RightSortableRow
-                          key={entry.id!}
-                          entry={entry}
-                          idx={idx}
-                          onEdit={handleEditRightEntryClick}
-                          onDelete={handleDeleteCustomRightEntry}
-                        />
-                      ))}
-                    </tbody>
-                  </SortableContext>
-                </DndContext>
-
-                {/* DB / Remaining Parties — drag only within this group */}
-                <DndContext
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={(event: DragEndEvent) => {
-                    const { active, over } = event;
-                    if (over && active.id !== over.id) {
-                      setCustomRightEntries(prev => {
-                        const customs = prev.filter(e => e.isCustom);
-                        const dbs = prev.filter(e => !e.isCustom);
-                        const oldIdx = dbs.findIndex(e => e.id === active.id);
-                        const newIdx = dbs.findIndex(e => e.id === over.id);
-                        if (oldIdx === -1 || newIdx === -1) return prev;
-                        return [...customs, ...arrayMove(dbs, oldIdx, newIdx)];
-                      });
-                    }
-                  }}
-                >
-                  <SortableContext items={dbPart.map(e => e.id!)} strategy={verticalListSortingStrategy}>
-                    <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
-                      {dbPart.map((entry, idx) => (
-                        <RightSortableRow
-                          key={entry.id!}
-                          entry={entry}
-                          idx={customPart.length + idx}
-                          onEdit={handleEditRightEntryClick}
-                          onDelete={handleDeleteCustomRightEntry}
-                        />
-                      ))}
-                    </tbody>
-                  </SortableContext>
-                </DndContext>
-
-                {/* Empty state */}
-                {displayRightEntries.length === 0 && (
-                  <tbody>
+                <tbody className="divide-y divide-[#D9D9D9] dark:divide-slate-800">
+                  {displayRightEntries.map((entry) => (
+                    <RightRow
+                      key={entry.id!}
+                      entry={entry}
+                      onEdit={handleEditRightEntryClick}
+                      onDelete={handleDeleteCustomRightEntry}
+                    />
+                  ))}
+                  {displayRightEntries.length === 0 && (
                     <tr>
                       <td colSpan={3} className="py-16 text-center text-slate-400 dark:text-slate-500 italic bg-white dark:bg-slate-900 border-b border-[#D9D9D9] dark:border-slate-800">
                         {isSaved
@@ -1419,8 +1449,8 @@ const TransferEntry = () => {
                           : 'Worksheet is not saved yet. Add entries and click "Save & Sync" in the left form.'}
                       </td>
                     </tr>
-                  </tbody>
-                )}
+                  )}
+                </tbody>
               </table>
             </div>
           </div>
@@ -1431,7 +1461,7 @@ const TransferEntry = () => {
             <div className="px-6 py-5 bg-[#E2EFDA] dark:bg-[#20321c]/40 border-t-2 border-b-4 border-[#BFBFBF] dark:border-slate-700 text-slate-800 dark:text-white font-black text-sm flex justify-between items-center tracking-tight">
               <span>Total Balance</span>
               <span className={rightTotalBalance >= 0 ? 'text-emerald-700 dark:text-emerald-400 text-base' : 'text-rose-700 dark:text-rose-400 text-base'}>
-                {rightTotalBalance < 0 ? '- ' : ''}₹ {Math.round(Math.abs(rightTotalBalance)).toLocaleString('en-IN')}
+                {rightTotalBalance < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs(rightTotalBalance)).toLocaleString('en-IN')}
               </span>
             </div>
           )}
@@ -1447,26 +1477,27 @@ const TransferEntry = () => {
             FINAL TOTAL
           </div>
           <div className="bg-[#92D050] text-slate-900 px-6 py-4 flex items-center justify-center w-full sm:w-1/2 text-center truncate font-black">
-            {(leftTotalFinal + rightTotalBalance) < 0 ? '- ' : ''}₹ {Math.round(Math.abs(leftTotalFinal + rightTotalBalance)).toLocaleString('en-IN')}
+            {(leftTotalFinal + rightTotalBalance) < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs(leftTotalFinal + rightTotalBalance)).toLocaleString('en-IN')}
           </div>
         </div>
 
         {/* Small Deduction input box below the Final Total banner */}
-        <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3 text-xs print:hidden bg-slate-50/50 dark:bg-slate-950/20 max-w-xl mx-auto p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm">
+        <div className="mt-4 flex flex-col sm:flex-row items-center justify-center gap-3 text-xs bg-slate-50/50 dark:bg-slate-950/20 max-w-xl mx-auto p-2.5 rounded-2xl border border-slate-100 dark:border-slate-800 print:bg-transparent print:border-none print:mt-2">
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-sm print:shadow-none print:border-none print:p-0">
             <span className="text-slate-700 dark:text-slate-300 font-normal uppercase text-[10px] tracking-wider">Tally Amount:</span>
             <input
               type="number"
               placeholder="e.g. 10000"
-              className="w-28 bg-transparent outline-none font-bold text-slate-800 dark:text-white text-xs"
+              className="w-28 bg-transparent outline-none font-bold text-slate-800 dark:text-white text-xs print:hidden"
               value={deductionInput}
               onChange={(e) => setDeductionInput(e.target.value)}
             />
+            <span className="hidden print:inline font-black text-xs text-slate-800">{deductionInput ? Math.round(Number(deductionInput)).toLocaleString('en-IN') : '0'}</span>
           </div>
           <div className="font-bold text-slate-700 dark:text-slate-300">
             Difference: 
             <span className={`font-black text-sm ml-1.5 ${((leftTotalFinal + rightTotalBalance) - (parseFloat(deductionInput) || 0)) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
-              {((leftTotalFinal + rightTotalBalance) - (parseFloat(deductionInput) || 0)) < 0 ? '- ' : ''}₹ {Math.round(Math.abs((leftTotalFinal + rightTotalBalance) - (parseFloat(deductionInput) || 0))).toLocaleString('en-IN')}
+              {((leftTotalFinal + rightTotalBalance) - (parseFloat(deductionInput) || 0)) < 0 ? '- ' : ''}<span className="print:hidden">₹ </span>{Math.round(Math.abs((leftTotalFinal + rightTotalBalance) - (parseFloat(deductionInput) || 0))).toLocaleString('en-IN')}
             </span>
           </div>
         </div>
@@ -1796,15 +1827,23 @@ const TransferEntry = () => {
           .bg-\\[\\#FFD966\\] { background-color: #FFD966 !important; color: #0f172a !important; }
           .bg-\\[\\#47C5CB\\] { background-color: #47C5CB !important; color: #0f172a !important; }
           .bg-\\[\\#92D050\\] { background-color: #92D050 !important; color: #0f172a !important; }
-          .bg-\\[\\#FF7070\\] { background-color: #FF7070 !important; color: white !important; }
+          .bg-\\[\\#FF7070\\] { background-color: #FF7070 !important; color: #000000 !important; }
           .bg-\\[\\#9DC3E6\\] { background-color: #9DC3E6 !important; color: #0f172a !important; }
 
           /* Row colors (Right Table) in print */
-          .bg-\\[\\#E53935\\] { background-color: #E53935 !important; color: white !important; }
+          .bg-\\[\\#E53935\\] { background-color: #E53935 !important; color: #000000 !important; }
           .bg-\\[\\#FDD835\\] { background-color: #FDD835 !important; color: #0f172a !important; }
           .bg-\\[\\#43A047\\] { background-color: #43A047 !important; color: white !important; }
           .bg-\\[\\#1565C0\\] { background-color: #1565C0 !important; color: white !important; }
           .bg-\\[\\#B39DDB\\] { background-color: #B39DDB !important; color: #0f172a !important; }
+
+          /* Red rows text and amount color in print */
+          tr.bg-\\[\\#FF7070\\] td,
+          tr.bg-\\[\\#E53935\\] td,
+          tr.bg-\\[\\#FF7070\\] td *,
+          tr.bg-\\[\\#E53935\\] td * {
+            color: #000000 !important;
+          }
 
           /* Positive/Negative text adjustments */
           .text-emerald-800, .dark\\:text-emerald-300, .text-emerald-700, .dark\\:text-emerald-400 {
