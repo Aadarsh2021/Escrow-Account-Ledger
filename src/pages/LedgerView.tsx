@@ -147,6 +147,7 @@ const LedgerView = () => {
   // Custom ledger transaction operation hook
   const {
     transactions,
+    setTransactions,
     printTransactions,
     closingBalance,
     selectedTnsIds,
@@ -210,48 +211,56 @@ const LedgerView = () => {
 
   const toggleCheckedTns = async (tnsId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const isCurrentlyChecked = checkedTnsIds.has(tnsId);
-    const newChecked = new Set(checkedTnsIds);
-    if (isCurrentlyChecked) {
-      newChecked.delete(tnsId);
-    } else {
-      newChecked.add(tnsId);
-    }
-    setCheckedTnsIds(newChecked);
+    let nextCheckedState = false;
+    setCheckedTnsIds(prev => {
+      const isCurrentlyChecked = prev.has(tnsId);
+      nextCheckedState = !isCurrentlyChecked;
+      const next = new Set(prev);
+      if (isCurrentlyChecked) {
+        next.delete(tnsId);
+      } else {
+        next.add(tnsId);
+      }
+      return next;
+    });
+
+    setTransactions(prev => prev.map(t => t.id === tnsId ? { ...t, is_checked: nextCheckedState } : t));
 
     try {
       const { error } = await supabase
         .from('transactions')
-        .update({ is_checked: !isCurrentlyChecked })
+        .update({ is_checked: nextCheckedState })
         .eq('id', tnsId);
       if (error) throw error;
     } catch (err) {
       console.error('Error toggling checked state in database:', err);
       // Revert in case of failure
-      const reverted = new Set(checkedTnsIds);
-      if (isCurrentlyChecked) {
-        reverted.add(tnsId);
-      } else {
-        reverted.delete(tnsId);
-      }
-      setCheckedTnsIds(reverted);
+      setCheckedTnsIds(prev => {
+        const reverted = new Set(prev);
+        if (nextCheckedState) {
+          reverted.delete(tnsId);
+        } else {
+          reverted.add(tnsId);
+        }
+        return reverted;
+      });
+      setTransactions(prev => prev.map(t => t.id === tnsId ? { ...t, is_checked: !nextCheckedState } : t));
     }
   };
 
   const toggleSelectAllChecked = async () => {
     const allChecked = checkedTnsIds.size === transactions.length && transactions.length > 0;
-    let newChecked: Set<string>;
     let nextCheckedState: boolean;
 
     if (allChecked) {
-      newChecked = new Set();
       nextCheckedState = false;
+      setCheckedTnsIds(new Set());
     } else {
-      newChecked = new Set(transactions.map(t => t.id));
       nextCheckedState = true;
+      setCheckedTnsIds(new Set(transactions.map(t => t.id)));
     }
 
-    setCheckedTnsIds(newChecked);
+    setTransactions(prev => prev.map(t => ({ ...t, is_checked: nextCheckedState })));
 
     try {
       const tnsIdsToUpdate = transactions.map(t => t.id);
@@ -262,9 +271,7 @@ const LedgerView = () => {
         .in('id', tnsIdsToUpdate);
       if (error) throw error;
     } catch (err) {
-      console.error('Error batch updating checked states in database:', err);
-      // Revert in case of failure
-      setCheckedTnsIds(checkedTnsIds);
+      console.error('Error toggling select all checked state:', err);
     }
   };
 
@@ -350,7 +357,15 @@ const LedgerView = () => {
       }, 50);
 
       const channel = supabase.channel(`ledger-${selectedParty.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => {
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, (payload: any) => {
+          if (payload?.eventType === 'UPDATE' && payload?.new && payload?.old) {
+            const newObj = payload.new;
+            const oldObj = payload.old;
+            const changedKeys = Object.keys(newObj).filter(k => newObj[k] !== oldObj[k]);
+            if (changedKeys.length === 1 && changedKeys[0] === 'is_checked') {
+              return;
+            }
+          }
           fetchTransactions(selectedParty.id, isOldRecordsViewRef.current);
           fetchAllTransactionsForPrint(selectedParty.id);
         })
