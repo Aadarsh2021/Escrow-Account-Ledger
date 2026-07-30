@@ -204,6 +204,9 @@ const LedgerView = () => {
       return t;
     }));
 
+    // Finalized transactions in Old Record view cannot be modified in DB (protected by DB trigger)
+    if (isOldRecordsView) return;
+
     supabase
       .from('transactions')
       .update({ is_checked: nextCheckedState })
@@ -219,6 +222,8 @@ const LedgerView = () => {
     const nextCheckedState = !allChecked;
 
     setTransactions(prev => prev.map(t => ({ ...t, is_checked: nextCheckedState })));
+
+    if (isOldRecordsView) return;
 
     const tnsIdsToUpdate = transactions.map(t => t.id);
     if (tnsIdsToUpdate.length === 0) return;
