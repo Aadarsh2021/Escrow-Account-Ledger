@@ -289,7 +289,7 @@ const Navbar = () => {
 
       {/* Mobile Bottom Tab Bar */}
       {user && createPortal(
-        <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 flex justify-around items-center z-40 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
+        <div className="print:hidden md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-2 flex justify-around items-center z-40 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
           <Link to="/dashboard" className="flex flex-col items-center gap-1 py-1 px-3 text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all">
             <BarChart3 className="w-5 h-5" />
             <span className="text-[9px] font-black uppercase tracking-wider">Home</span>

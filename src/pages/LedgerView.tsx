@@ -335,9 +335,14 @@ const LedgerView = () => {
     }
   }, [searchParams, parties]);
 
+  const isOldRecordsViewRef = useRef(isOldRecordsView);
+  useEffect(() => {
+    isOldRecordsViewRef.current = isOldRecordsView;
+  }, [isOldRecordsView]);
+
   useEffect(() => {
     if (selectedParty) {
-      fetchTransactions(selectedParty.id);
+      fetchTransactions(selectedParty.id, isOldRecordsView);
       fetchAllTransactionsForPrint(selectedParty.id);
       
       setTimeout(() => {
@@ -346,7 +351,7 @@ const LedgerView = () => {
 
       const channel = supabase.channel(`ledger-${selectedParty.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, () => {
-          fetchTransactions(selectedParty.id);
+          fetchTransactions(selectedParty.id, isOldRecordsViewRef.current);
           fetchAllTransactionsForPrint(selectedParty.id);
         })
         .subscribe();
@@ -355,7 +360,7 @@ const LedgerView = () => {
         supabase.removeChannel(channel); 
       };
     }
-  }, [selectedParty]);
+  }, [selectedParty, isOldRecordsView]);
 
   // Auto scroll to bottom when transactions load or a new transaction is added
   const scrollToBottom = () => {
@@ -587,6 +592,8 @@ const LedgerView = () => {
       action: () => {
         const nextState = !isOldRecordsView;
         setIsOldRecordsView(nextState);
+        setSelectedTnsIds(new Set());
+        setCheckedTnsIds(new Set());
         fetchTransactions(selectedParty!.id, nextState);
       } 
     },

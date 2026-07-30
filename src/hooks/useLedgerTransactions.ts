@@ -131,9 +131,17 @@ export const useLedgerTransactions = ({
           const partnerNameMap = new Map<string, string>();
           const partnerTypeMap = new Map<string, string>();
           partnerData.forEach((p: any) => {
-            if (p.parties?.system_type !== 'commission' || !partnerNameMap.has(p.linked_transaction_id)) {
-              partnerNameMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
-              partnerTypeMap.set(p.linked_transaction_id, p.parties?.system_type || 'normal');
+            const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
+            const partyName = rawParties?.party_name || 'System';
+            const systemType = rawParties?.system_type || 'normal';
+            const id = p.linked_transaction_id;
+
+            if (id) {
+              const existingType = partnerTypeMap.get(id);
+              if (!partnerNameMap.has(id) || (existingType === 'commission' && systemType !== 'commission')) {
+                partnerNameMap.set(id, partyName);
+                partnerTypeMap.set(id, systemType);
+              }
             }
           });
           
@@ -179,9 +187,17 @@ export const useLedgerTransactions = ({
           const partnerNameMap = new Map<string, string>();
           const partnerTypeMap = new Map<string, string>();
           partnerData.forEach((p: any) => {
-            if (p.parties?.system_type !== 'commission' || !partnerNameMap.has(p.linked_transaction_id)) {
-              partnerNameMap.set(p.linked_transaction_id, p.parties?.party_name || 'System');
-              partnerTypeMap.set(p.linked_transaction_id, p.parties?.system_type || 'normal');
+            const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
+            const partyName = rawParties?.party_name || 'System';
+            const systemType = rawParties?.system_type || 'normal';
+            const id = p.linked_transaction_id;
+
+            if (id) {
+              const existingType = partnerTypeMap.get(id);
+              if (!partnerNameMap.has(id) || (existingType === 'commission' && systemType !== 'commission')) {
+                partnerNameMap.set(id, partyName);
+                partnerTypeMap.set(id, systemType);
+              }
             }
           });
           
