@@ -196,13 +196,22 @@ const LedgerView = () => {
     e.stopPropagation();
     let nextCheckedState = false;
 
-    setTransactions(prev => prev.map(t => {
-      if (t.id === tnsId) {
-        nextCheckedState = !t.is_checked;
-        return { ...t, is_checked: nextCheckedState };
+    setTransactions(prev => {
+      const updated = prev.map(t => {
+        if (t.id === tnsId) {
+          nextCheckedState = !t.is_checked;
+          return { ...t, is_checked: nextCheckedState };
+        }
+        return t;
+      });
+
+      if (isOldRecordsView && selectedParty) {
+        const checkedIds = updated.filter(t => t.is_checked).map(t => t.id);
+        localStorage.setItem(`ledger_checked_old_${selectedParty.id}`, JSON.stringify(checkedIds));
       }
-      return t;
-    }));
+
+      return updated;
+    });
 
     // Finalized transactions in Old Record view cannot be modified in DB (protected by DB trigger)
     if (isOldRecordsView) return;
@@ -221,7 +230,16 @@ const LedgerView = () => {
     const allChecked = transactions.length > 0 && transactions.every(t => t.is_checked);
     const nextCheckedState = !allChecked;
 
-    setTransactions(prev => prev.map(t => ({ ...t, is_checked: nextCheckedState })));
+    setTransactions(prev => {
+      const updated = prev.map(t => ({ ...t, is_checked: nextCheckedState }));
+
+      if (isOldRecordsView && selectedParty) {
+        const checkedIds = updated.filter(t => t.is_checked).map(t => t.id);
+        localStorage.setItem(`ledger_checked_old_${selectedParty.id}`, JSON.stringify(checkedIds));
+      }
+
+      return updated;
+    });
 
     if (isOldRecordsView) return;
 

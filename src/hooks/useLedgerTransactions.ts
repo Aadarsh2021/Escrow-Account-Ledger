@@ -154,6 +154,20 @@ export const useLedgerTransactions = ({
         }
       }
 
+      if (showArchived) {
+        try {
+          const savedOldChecked = localStorage.getItem(`ledger_checked_old_${partyId}`);
+          if (savedOldChecked !== null) {
+            const checkedSet = new Set(JSON.parse(savedOldChecked));
+            currentTns.forEach(t => {
+              t.is_checked = checkedSet.has(t.id);
+            });
+          }
+        } catch (e) {
+          console.error('Error reading archived checked state from localStorage:', e);
+        }
+      }
+
       setTransactions(currentTns);
       if (!showArchived) {
         setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
