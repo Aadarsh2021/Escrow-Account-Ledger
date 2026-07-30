@@ -192,87 +192,44 @@ const LedgerView = () => {
     setConfirmDialog
   });
 
-  // Reconciled/Checked transactions checklist state & handlers (persisted in DB)
-  const [checkedTnsIds, setCheckedTnsIds] = useState<Set<string>>(new Set());
-
-  // Load checked transaction IDs for the selected party from database transactions
-  useEffect(() => {
-    if (selectedParty) {
-      const checked = new Set(
-        transactions
-          .filter(t => t.is_checked)
-          .map(t => t.id)
-      );
-      setCheckedTnsIds(checked);
-    } else {
-      setCheckedTnsIds(new Set());
-    }
-  }, [selectedParty, transactions]);
-
-  const toggleCheckedTns = async (tnsId: string, e: React.MouseEvent) => {
+  const toggleCheckedTns = (tnsId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     let nextCheckedState = false;
-    setCheckedTnsIds(prev => {
-      const isCurrentlyChecked = prev.has(tnsId);
-      nextCheckedState = !isCurrentlyChecked;
-      const next = new Set(prev);
-      if (isCurrentlyChecked) {
-        next.delete(tnsId);
-      } else {
-        next.add(tnsId);
+
+    setTransactions(prev => prev.map(t => {
+      if (t.id === tnsId) {
+        nextCheckedState = !t.is_checked;
+        return { ...t, is_checked: nextCheckedState };
       }
-      return next;
-    });
+      return t;
+    }));
 
-    setTransactions(prev => prev.map(t => t.id === tnsId ? { ...t, is_checked: nextCheckedState } : t));
-
-    try {
-      const { error } = await supabase
-        .from('transactions')
-        .update({ is_checked: nextCheckedState })
-        .eq('id', tnsId);
-      if (error) throw error;
-    } catch (err) {
-      console.error('Error toggling checked state in database:', err);
-      // Revert in case of failure
-      setCheckedTnsIds(prev => {
-        const reverted = new Set(prev);
-        if (nextCheckedState) {
-          reverted.delete(tnsId);
-        } else {
-          reverted.add(tnsId);
-        }
-        return reverted;
+    supabase
+      .from('transactions')
+      .update({ is_checked: nextCheckedState })
+      .eq('id', tnsId)
+      .then(({ error }) => {
+        if (error) console.error('Error updating check state in DB:', error);
       });
-      setTransactions(prev => prev.map(t => t.id === tnsId ? { ...t, is_checked: !nextCheckedState } : t));
-    }
   };
 
-  const toggleSelectAllChecked = async () => {
-    const allChecked = checkedTnsIds.size === transactions.length && transactions.length > 0;
-    let nextCheckedState: boolean;
-
-    if (allChecked) {
-      nextCheckedState = false;
-      setCheckedTnsIds(new Set());
-    } else {
-      nextCheckedState = true;
-      setCheckedTnsIds(new Set(transactions.map(t => t.id)));
-    }
+  const toggleSelectAllChecked = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const allChecked = transactions.length > 0 && transactions.every(t => t.is_checked);
+    const nextCheckedState = !allChecked;
 
     setTransactions(prev => prev.map(t => ({ ...t, is_checked: nextCheckedState })));
 
-    try {
-      const tnsIdsToUpdate = transactions.map(t => t.id);
-      if (tnsIdsToUpdate.length === 0) return;
-      const { error } = await supabase
-        .from('transactions')
-        .update({ is_checked: nextCheckedState })
-        .in('id', tnsIdsToUpdate);
-      if (error) throw error;
-    } catch (err) {
-      console.error('Error toggling select all checked state:', err);
-    }
+    const tnsIdsToUpdate = transactions.map(t => t.id);
+    if (tnsIdsToUpdate.length === 0) return;
+
+    supabase
+      .from('transactions')
+      .update({ is_checked: nextCheckedState })
+      .in('id', tnsIdsToUpdate)
+      .then(({ error }) => {
+        if (error) console.error('Error batch updating checked state in DB:', error);
+      });
   };
 
   // Load parties list and click outside listeners on mount
@@ -608,7 +565,6 @@ const LedgerView = () => {
         const nextState = !isOldRecordsView;
         setIsOldRecordsView(nextState);
         setSelectedTnsIds(new Set());
-        setCheckedTnsIds(new Set());
         fetchTransactions(selectedParty!.id, nextState);
       } 
     },
@@ -923,8 +879,8 @@ const LedgerView = () => {
                         <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Credit</th>
                         <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Debit</th>
                         <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12">
-                          <div onClick={(e) => { e.stopPropagation(); toggleSelectAllChecked(); }} className={`w-4 h-4 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.size === transactions.length && transactions.length > 0 ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 dark:border-slate-700'}`}>
-                            {checkedTnsIds.size === transactions.length && transactions.length > 0 && <Check className="w-2.5 h-2.5 text-white stroke-[3]" />}
+                          <div onClick={(e) => { e.stopPropagation(); toggleSelectAllChecked(); }} className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${transactions.length > 0 && transactions.every(t => t.is_checked) ? 'bg-emerald-600 border-emerald-600' : 'border-slate-300 dark:border-slate-700'}`}>
+                            {transactions.length > 0 && transactions.every(t => t.is_checked) && <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>}
                           </div>
                         </th>
                         <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Balance</th>
@@ -1000,9 +956,9 @@ const LedgerView = () => {
                                 ? 'text-sky-600 dark:text-sky-400 font-bold'
                                 : 'text-rose-600 dark:text-rose-455 font-bold'
                           }`}>{t.debit > 0 ? `₹ ${Math.round(t.debit).toLocaleString()}` : '-'}</td>
-                          <td className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12">
-                            <div onClick={(e) => toggleCheckedTns(t.id, e)} className={`w-5 h-5 rounded-full border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${checkedTnsIds.has(t.id) ? (selectedTnsIds.has(t.id) ? 'bg-white border-white text-blue-600' : 'bg-emerald-500 border-emerald-500 text-white') : (selectedTnsIds.has(t.id) ? 'border-blue-200 text-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
-                              {checkedTnsIds.has(t.id) && <Check className="w-3 h-3 stroke-[3]" />}
+                          <td className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12" onClick={(e) => toggleCheckedTns(t.id, e)}>
+                            <div className={`w-5 h-5 rounded-lg border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${t.is_checked ? (selectedTnsIds.has(t.id) ? 'bg-white border-white' : 'bg-emerald-600 border-emerald-600') : (selectedTnsIds.has(t.id) ? 'border-blue-200' : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 bg-white dark:bg-slate-900')}`}>
+                              <Check className={`w-3.5 h-3.5 stroke-[3] transition-all ${t.is_checked ? (selectedTnsIds.has(t.id) ? 'text-blue-600' : 'text-white') : 'opacity-0'}`} />
                             </div>
                           </td>
                           <td className={`px-1.5 md:px-3 py-1.5 md:py-2 text-right font-black whitespace-nowrap ${

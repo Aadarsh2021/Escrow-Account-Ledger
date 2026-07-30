@@ -60,9 +60,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (userId: string) => {
     try {
-      // 1-second timeout for quick background profile fetches
+      // 5-second timeout for background profile fetches
       const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) => 
-        setTimeout(() => resolve({ data: null, error: new Error('Profile fetch timeout') }), 1000)
+        setTimeout(() => resolve({ data: null, error: new Error('Profile fetch timeout') }), 5000)
       );
 
       const fetchPromise = supabase
@@ -74,7 +74,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as { data: any, error: any };
 
       if (error) {
-        console.warn('Profile fetch handled:', error.message);
         return null;
       }
       
@@ -87,7 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return data;
     } catch (err) {
-      console.error('Profile fetch exception:', err);
       return null;
     }
   };
