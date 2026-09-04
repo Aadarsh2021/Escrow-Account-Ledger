@@ -359,25 +359,25 @@ const LedgerView = () => {
 
   // Auto scroll to bottom when transactions load or a new transaction is added
   const scrollToBottom = () => {
-    setTimeout(() => {
+    const doScroll = () => {
       if (transactionListRef.current) {
         transactionListRef.current.scrollTop = transactionListRef.current.scrollHeight;
       }
-    }, 50);
+    };
+    doScroll();
+    requestAnimationFrame(doScroll);
+    setTimeout(doScroll, 60);
+    setTimeout(doScroll, 150);
+    setTimeout(doScroll, 300);
   };
 
   useEffect(() => {
     if (selectedParty && transactions.length > 0) {
-      const partyChanged = prevPartyIdRef.current !== selectedParty.id;
-      const lengthIncreased = transactions.length > prevLengthRef.current;
-
-      if (partyChanged || lengthIncreased) {
-        scrollToBottom();
-      }
+      scrollToBottom();
     }
     prevLengthRef.current = transactions.length;
     prevPartyIdRef.current = selectedParty?.id || null;
-  }, [transactions, selectedParty?.id]);
+  }, [transactions, selectedParty?.id, isOldRecordsView]);
 
   const handlePartySelect = (party: Party) => {
     setSearchParams({ partyId: party.id });
@@ -589,6 +589,7 @@ const LedgerView = () => {
         setIsOldRecordsView(nextState);
         setSelectedTnsIds(new Set());
         fetchTransactions(selectedParty!.id, nextState);
+        scrollToBottom();
       } 
     },
     { 

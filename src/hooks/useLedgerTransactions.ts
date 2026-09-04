@@ -109,49 +109,81 @@ export const useLedgerTransactions = ({
 
   const fetchTransactions = async (partyId: string, showArchived: boolean = false) => {
     try {
-      const { data: tnsData, error: tnsError } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('party_id', partyId)
-        .filter('is_finalized', showArchived ? 'eq' : 'neq', true)
-        .order('transaction_date', { ascending: true });
-        
-      if (tnsError) throw tnsError;
-      
-      const currentTns = (tnsData || []) as Transaction[];
-      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
-      if (linkedIds.length > 0) {
-        const { data: partnerData } = await supabase
-          .from('transactions')
-          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
-          .in('linked_transaction_id', linkedIds)
-          .neq('party_id', partyId);
-        
-        if (partnerData) {
-          const partnerNameMap = new Map<string, string>();
-          const partnerTypeMap = new Map<string, string>();
-          partnerData.forEach((p: any) => {
-            const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
-            const partyName = rawParties?.party_name || 'System';
-            const systemType = rawParties?.system_type || 'normal';
-            const id = p.linked_transaction_id;
+      let currentTns: Transaction[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-            if (id) {
-              const existingType = partnerTypeMap.get(id);
-              if (!partnerNameMap.has(id) || (existingType === 'commission' && systemType !== 'commission')) {
-                partnerNameMap.set(id, partyName);
-                partnerTypeMap.set(id, systemType);
-              }
-            }
-          });
-          
-          currentTns.forEach(t => {
-            if (t.linked_transaction_id) {
-              t.partner_party_name = partnerNameMap.get(t.linked_transaction_id);
-              t.partner_system_type = partnerTypeMap.get(t.linked_transaction_id) as any;
-            }
-          });
+      while (hasMore) {
+        let query = supabase
+          .from('transactions')
+          .select('*')
+          .eq('party_id', partyId);
+
+        if (showArchived) {
+          query = query.eq('is_finalized', true);
+        } else {
+          query = query.or('is_finalized.is.null,is_finalized.eq.false');
         }
+
+        const { data: pageData, error: tnsError } = await query
+          .order('transaction_date', { ascending: true })
+          .order('created_at', { ascending: true })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (tnsError) throw tnsError;
+
+        if (pageData && pageData.length > 0) {
+          currentTns = currentTns.concat(pageData as Transaction[]);
+          if (pageData.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+      
+      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
+      const uniqueLinkedIds = Array.from(new Set(linkedIds));
+      if (uniqueLinkedIds.length > 0) {
+        const partnerNameMap = new Map<string, string>();
+        const partnerTypeMap = new Map<string, string>();
+        const chunkSize = 200;
+
+        for (let i = 0; i < uniqueLinkedIds.length; i += chunkSize) {
+          const chunk = uniqueLinkedIds.slice(i, i + chunkSize);
+          const { data: partnerData } = await supabase
+            .from('transactions')
+            .select('linked_transaction_id, party_id, parties(party_name, system_type)')
+            .in('linked_transaction_id', chunk)
+            .neq('party_id', partyId);
+
+          if (partnerData) {
+            partnerData.forEach((p: any) => {
+              const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
+              const partyName = rawParties?.party_name || 'System';
+              const systemType = rawParties?.system_type || 'normal';
+              const id = p.linked_transaction_id;
+
+              if (id) {
+                const existingType = partnerTypeMap.get(id);
+                if (!partnerNameMap.has(id) || (existingType === 'commission' && systemType !== 'commission')) {
+                  partnerNameMap.set(id, partyName);
+                  partnerTypeMap.set(id, systemType);
+                }
+              }
+            });
+          }
+        }
+
+        currentTns.forEach(t => {
+          if (t.linked_transaction_id) {
+            t.partner_party_name = partnerNameMap.get(t.linked_transaction_id);
+            t.partner_system_type = partnerTypeMap.get(t.linked_transaction_id) as any;
+          }
+        });
       }
 
       if (showArchived) {
@@ -179,49 +211,73 @@ export const useLedgerTransactions = ({
 
   const fetchAllTransactionsForPrint = async (partyId: string) => {
     try {
-      const { data: tnsData, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .eq('party_id', partyId)
-        .order('transaction_date', { ascending: true })
-        .order('created_at', { ascending: true });
-        
-      if (error) throw error;
-      
-      const currentTns = (tnsData || []) as Transaction[];
-      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
-      if (linkedIds.length > 0) {
-        const { data: partnerData } = await supabase
-          .from('transactions')
-          .select('linked_transaction_id, party_id, parties(party_name, system_type)')
-          .in('linked_transaction_id', linkedIds)
-          .neq('party_id', partyId);
-        
-        if (partnerData) {
-          const partnerNameMap = new Map<string, string>();
-          const partnerTypeMap = new Map<string, string>();
-          partnerData.forEach((p: any) => {
-            const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
-            const partyName = rawParties?.party_name || 'System';
-            const systemType = rawParties?.system_type || 'normal';
-            const id = p.linked_transaction_id;
+      let currentTns: Transaction[] = [];
+      let page = 0;
+      const pageSize = 1000;
+      let hasMore = true;
 
-            if (id) {
-              const existingType = partnerTypeMap.get(id);
-              if (!partnerNameMap.has(id) || (existingType === 'commission' && systemType !== 'commission')) {
-                partnerNameMap.set(id, partyName);
-                partnerTypeMap.set(id, systemType);
-              }
-            }
-          });
-          
-          currentTns.forEach(t => {
-            if (t.linked_transaction_id) {
-              t.partner_party_name = partnerNameMap.get(t.linked_transaction_id);
-              t.partner_system_type = partnerTypeMap.get(t.linked_transaction_id) as any;
-            }
-          });
+      while (hasMore) {
+        const { data: pageData, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('party_id', partyId)
+          .order('transaction_date', { ascending: true })
+          .order('created_at', { ascending: true })
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+
+        if (pageData && pageData.length > 0) {
+          currentTns = currentTns.concat(pageData as Transaction[]);
+          if (pageData.length < pageSize) {
+            hasMore = false;
+          } else {
+            page++;
+          }
+        } else {
+          hasMore = false;
         }
+      }
+      
+      const linkedIds = currentTns.map(t => t.linked_transaction_id).filter(Boolean) as string[];
+      const uniqueLinkedIds = Array.from(new Set(linkedIds));
+      if (uniqueLinkedIds.length > 0) {
+        const partnerNameMap = new Map<string, string>();
+        const partnerTypeMap = new Map<string, string>();
+        const chunkSize = 200;
+
+        for (let i = 0; i < uniqueLinkedIds.length; i += chunkSize) {
+          const chunk = uniqueLinkedIds.slice(i, i + chunkSize);
+          const { data: partnerData } = await supabase
+            .from('transactions')
+            .select('linked_transaction_id, party_id, parties(party_name, system_type)')
+            .in('linked_transaction_id', chunk)
+            .neq('party_id', partyId);
+
+          if (partnerData) {
+            partnerData.forEach((p: any) => {
+              const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
+              const partyName = rawParties?.party_name || 'System';
+              const systemType = rawParties?.system_type || 'normal';
+              const id = p.linked_transaction_id;
+
+              if (id) {
+                const existingType = partnerTypeMap.get(id);
+                if (!partnerNameMap.has(id) || (existingType === 'commission' && systemType !== 'commission')) {
+                  partnerNameMap.set(id, partyName);
+                  partnerTypeMap.set(id, systemType);
+                }
+              }
+            });
+          }
+        }
+
+        currentTns.forEach(t => {
+          if (t.linked_transaction_id) {
+            t.partner_party_name = partnerNameMap.get(t.linked_transaction_id);
+            t.partner_system_type = partnerTypeMap.get(t.linked_transaction_id) as any;
+          }
+        });
       }
       setPrintTransactions(currentTns);
     } catch (err) {
@@ -235,7 +291,7 @@ export const useLedgerTransactions = ({
         .from('transactions')
         .select('*')
         .eq('party_id', partyId)
-        .neq('is_finalized', true)
+        .or('is_finalized.is.null,is_finalized.eq.false')
         .order('transaction_date', { ascending: true })
         .order('created_at', { ascending: true });
 
@@ -288,7 +344,7 @@ export const useLedgerTransactions = ({
             .from('transactions')
             .select('*')
             .eq('party_id', selectedParty.id)
-            .neq('is_finalized', true)
+            .or('is_finalized.is.null,is_finalized.eq.false')
             .order('transaction_date', { ascending: true });
 
           if (fErr) throw fErr;
@@ -353,7 +409,7 @@ export const useLedgerTransactions = ({
               .from('transactions')
               .select('*')
               .eq('party_id', pId)
-              .neq('is_finalized', true)
+              .or('is_finalized.is.null,is_finalized.eq.false')
               .order('transaction_date', { ascending: true });
 
             if (fetchErr) throw fetchErr;
