@@ -524,8 +524,8 @@ const TransferEntry = () => {
             const liveAmount = -party.balance;
             const liveFinalAmount = Number((liveAmount * (1 - deductionRate / 100)).toFixed(2));
 
-            // If the saved value is different from the live database value or deduction rate changed, update it
-            if (Number(t.amount) !== liveAmount || Math.round(Number(t.final_amount)) !== Math.round(liveFinalAmount)) {
+            // If the saved value is different from the live database value, prepare to update it
+            if (Number(t.amount) !== liveAmount) {
               finalAmount = liveAmount;
               finalFinalAmount = liveFinalAmount;
               updatesToMake.push({
