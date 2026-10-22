@@ -40,8 +40,10 @@ const Landing = () => {
       id: 'TXN-9021',
       date: '21 Oct 2026',
       party: 'Apex Trade Vault Ltd',
-      type: 'escrow',
+      type: 'escrow' as const,
       category: 'Escrow Deposit',
+      debitVal: 250000,
+      creditVal: 0,
       debit: '₹ 2,50,000',
       credit: '—',
       commission: '2.5%',
@@ -52,8 +54,10 @@ const Landing = () => {
       id: 'TXN-9022',
       date: '21 Oct 2026',
       party: 'Horizon Merchant Clearing',
-      type: 'commission',
+      type: 'commission' as const,
       category: 'Commission Credit',
+      debitVal: 0,
+      creditVal: 6250,
       debit: '—',
       credit: '₹ 6,250',
       commission: 'Auto',
@@ -64,8 +68,10 @@ const Landing = () => {
       id: 'TXN-9023',
       date: '20 Oct 2026',
       party: 'Nova Capital Escrow',
-      type: 'transfer',
+      type: 'transfer' as const,
       category: 'Party Settlement',
+      debitVal: 0,
+      creditVal: 180000,
       debit: '—',
       credit: '₹ 1,80,000',
       commission: '1.8%',
@@ -76,12 +82,28 @@ const Landing = () => {
       id: 'TXN-9024',
       date: '20 Oct 2026',
       party: 'Zenith Global Holdings',
-      type: 'escrow',
+      type: 'escrow' as const,
       category: 'Escrow Release',
-      debit: '₹ 1,80,000',
-      credit: '—',
+      debitVal: 0,
+      creditVal: 243750,
+      debit: '—',
+      credit: '₹ 2,43,750',
       commission: 'Flat',
       commissionAmt: '₹ 2,000',
+      status: 'Balanced'
+    },
+    {
+      id: 'TXN-9025',
+      date: '20 Oct 2026',
+      party: 'Starlight Clearing Vault',
+      type: 'transfer' as const,
+      category: 'Settlement Pay-in',
+      debitVal: 180000,
+      creditVal: 0,
+      debit: '₹ 1,80,000',
+      credit: '—',
+      commission: '1.8%',
+      commissionAmt: '—',
       status: 'Balanced'
     }
   ];
@@ -90,6 +112,11 @@ const Landing = () => {
     if (demoFilter === 'all') return true;
     return tx.type === demoFilter;
   });
+
+  const totalDebit = filteredTransactions.reduce((acc, tx) => acc + tx.debitVal, 0);
+  const totalCredit = filteredTransactions.reduce((acc, tx) => acc + tx.creditVal, 0);
+  const difference = totalDebit - totalCredit;
+  const formatINR = (val: number) => `₹ ${val.toLocaleString('en-IN')}`;
 
   const coreFeatures = [
     {
@@ -424,7 +451,7 @@ const Landing = () => {
 
             {/* Filter Pills inside Mockup */}
             <div className="px-6 py-4 bg-white dark:bg-slate-900 flex items-center justify-between flex-wrap gap-3 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold uppercase text-slate-400 dark:text-slate-500 mr-2 flex items-center gap-1">
                   <Sliders className="w-3.5 h-3.5" /> Filter Demo:
                 </span>
@@ -507,10 +534,16 @@ const Landing = () => {
 
             {/* Mockup Footer Bar */}
             <div className="p-4 bg-slate-50 dark:bg-slate-950/90 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-4 text-xs font-semibold text-slate-600 dark:text-slate-400">
-              <div className="flex items-center gap-4">
-                <span>Total Debit: <strong className="text-slate-900 dark:text-white">₹ 4,30,000</strong></span>
-                <span>Total Credit: <strong className="text-slate-900 dark:text-white">₹ 4,30,000</strong></span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-bold">Difference: ₹ 0.00 ✓</span>
+              <div className="flex items-center gap-4 flex-wrap">
+                <span>Total Debit: <strong className="text-slate-900 dark:text-white">{formatINR(totalDebit)}</strong></span>
+                <span>Total Credit: <strong className="text-slate-900 dark:text-white">{formatINR(totalCredit)}</strong></span>
+                {difference === 0 ? (
+                  <span className="text-emerald-600 dark:text-emerald-400 font-bold">Difference: ₹ 0.00 ✓</span>
+                ) : (
+                  <span className="text-indigo-600 dark:text-indigo-400 font-bold">
+                    Difference: {formatINR(Math.abs(difference))} ({difference > 0 ? 'Dr Excess' : 'Cr Excess'})
+                  </span>
+                )}
               </div>
               <button
                 onClick={() => navigate('/auth')}

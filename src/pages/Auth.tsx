@@ -13,12 +13,22 @@ import {
   Shield 
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { useEffect } from 'react';
 
 const Auth = () => {
+  const { signIn, user, loading: authLoading } = useAuth();
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  // If user is already authenticated, go directly to dashboard
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [user, authLoading, navigate]);
 
   // Form States
   const [formData, setFormData] = useState({
@@ -36,7 +46,7 @@ const Auth = () => {
   const handleGoogleLogin = async () => {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin }
+      options: { redirectTo: `${window.location.origin}/dashboard` }
     });
   };
 
@@ -53,29 +63,27 @@ const Auth = () => {
 
     try {
       if (isLogin) {
-        const { error } = await supabase.auth.signInWithPassword({ 
-          email: formData.email, 
-          password: formData.password 
-        });
-        if (error) throw error;
-        navigate('/dashboard');
+        const { error: signInErr } = await signIn(formData.email, formData.password);
+        if (signInErr) throw signInErr;
+        navigate('/dashboard', { replace: true });
       } else {
-        const { error } = await supabase.auth.signUp({ 
-          email: formData.email, 
+        const cleanEmail = formData.email.trim().toLowerCase();
+        const { error: signUpErr } = await supabase.auth.signUp({ 
+          email: cleanEmail, 
           password: formData.password,
           options: {
             data: {
-              full_name: formData.fullName,
-              mobile: formData.mobile
+              full_name: formData.fullName.trim(),
+              mobile: formData.mobile.trim()
             }
           }
         });
-        if (error) throw error;
+        if (signUpErr) throw signUpErr;
         alert('Registration successful! Please check your email for verification.');
         setIsLogin(true);
       }
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Authentication failed');
     } finally {
       setLoading(false);
     }

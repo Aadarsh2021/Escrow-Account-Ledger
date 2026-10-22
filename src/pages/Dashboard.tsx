@@ -92,7 +92,9 @@ const Dashboard = () => {
           setCompanyName(name);
           try {
             localStorage.setItem('cached_dashboard_company', name);
-          } catch {}
+          } catch {
+            // ignore localStorage quota errors
+          }
         }
 
         const totalParties = partiesData?.length || 0;
@@ -128,7 +130,9 @@ const Dashboard = () => {
           setStatsData(newStats);
           try {
             localStorage.setItem('cached_dashboard_stats', JSON.stringify(newStats));
-          } catch {}
+          } catch {
+            // ignore localStorage quota errors
+          }
         }
       } catch (err) {
         console.error('Error fetching dashboard data:', err);

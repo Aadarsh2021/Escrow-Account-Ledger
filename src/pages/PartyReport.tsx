@@ -135,7 +135,7 @@ const PartyReport = () => {
         // Update local state for all normal parties
         setParties(parties.map(p => {
           if (p.system_type !== 'normal') return p;
-          let updatedParty = { ...p };
+          const updatedParty = { ...p };
           if (p.status === 'take' && wantsTakeUpdate) {
             updatedParty.commission_rate = takeRate;
           }

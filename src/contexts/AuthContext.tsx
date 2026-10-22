@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
-import { GlobalLoader } from '../components/ui/GlobalLoader';
 
 interface Profile {
   id: string;
@@ -22,6 +21,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -58,7 +58,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, userEmail?: string, userFullName?: string) => {
     try {
       // 5-second timeout for background profile fetches
       const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) => 
@@ -71,7 +71,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', userId)
         .single();
 
-      const { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as { data: any, error: any };
+      let { data, error } = await Promise.race([fetchPromise, timeoutPromise]) as { data: any, error: any };
+
+      // Self-heal: If profile record is missing for this user, auto-create it
+      if (error && error.code === 'PGRST116') {
+        try {
+          const { data: newProfile } = await supabase
+            .from('profiles')
+            .upsert({
+              id: userId,
+              full_name: userFullName || null,
+              company_email: userEmail || null,
+            })
+            .select()
+            .single();
+          if (newProfile) {
+            data = newProfile;
+            error = null;
+          }
+        } catch {
+          // ignore auto-creation fallback error
+        }
+      }
 
       if (error) {
         return null;
@@ -85,15 +106,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
       return data;
-    } catch (err) {
+    } catch {
       return null;
     }
   };
 
   const refreshProfile = async () => {
     if (user) {
-      const data = await fetchProfile(user.id);
+      const data = await fetchProfile(user.id, user.email, user.user_metadata?.full_name);
       setProfile(data);
+    }
+  };
+
+  const signIn = async (email: string, password: string): Promise<{ error: Error | null }> => {
+    try {
+      setLoading(true);
+      const cleanEmail = email.trim().toLowerCase();
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (error) {
+        setLoading(false);
+        return { error };
+      }
+
+      if (data.session && data.user) {
+        setSession(data.session);
+        setUser(data.user);
+        const profileData = await fetchProfile(data.user.id, data.user.email, data.user.user_metadata?.full_name);
+        if (profileData) {
+          setProfile(profileData);
+        }
+      }
+      setLoading(false);
+      return { error: null };
+    } catch (err: any) {
+      setLoading(false);
+      return { error: err };
     }
   };
 
@@ -115,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSession(initialSession);
           setUser(initialSession.user);
           // Fetch profile in parallel in the background without awaiting it!
-          fetchProfile(initialSession.user.id).then((profileData) => {
+          fetchProfile(initialSession.user.id, initialSession.user.email, initialSession.user.user_metadata?.full_name).then((profileData) => {
             if (mounted && profileData) setProfile(profileData);
           });
         }
@@ -137,14 +188,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       
       if (currentUser) {
-        fetchProfile(currentUser.id).then((profileData) => {
+        fetchProfile(currentUser.id, currentUser.email, currentUser.user_metadata?.full_name).then((profileData) => {
           if (mounted && profileData) setProfile(profileData);
         });
       } else {
         setProfile(null);
         try {
           localStorage.removeItem('cached_profile');
-        } catch {}
+        } catch {
+          // ignore localStorage cleanup errors
+        }
       }
       
       if (event === 'SIGNED_IN' || event === 'SIGNED_OUT' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') {
@@ -175,15 +228,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.removeItem('cached_parties');
         localStorage.removeItem('cached_balance_sheet');
         localStorage.removeItem('cached_parties_report');
-      } catch {}
+      } catch {
+        // ignore localStorage cleanup errors
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, refreshProfile, signOut }}>
-      {!loading ? children : <GlobalLoader fullScreen={true} />}
+    <AuthContext.Provider value={{ session, user, profile, loading, signIn, refreshProfile, signOut }}>
+      {children}
     </AuthContext.Provider>
   );
 };

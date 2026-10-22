@@ -62,8 +62,6 @@ interface RightEntry {
   isCustom: boolean;
 }
 
-
-interface LeftEntry { id: string; partyId: string; partyName: string; amount: number; finalAmount: number; }
 const LeftSortableRow = memo(function LeftSortableRow({ entry, idx, onEdit, onDelete }: {
   entry: LeftEntry;
   idx: number;
@@ -444,7 +442,9 @@ const TransferEntry = () => {
           try {
             const raw = localStorage.getItem('transfer_edited_party_ids');
             cachedEdited = raw ? JSON.parse(raw) : [];
-          } catch {}
+          } catch {
+            // ignore localStorage parse error
+          }
 
           let updatedLeft: LeftEntry[] = [];
           setLeftEntries(prev => {
@@ -510,7 +510,9 @@ const TransferEntry = () => {
         try {
           const raw = localStorage.getItem('transfer_edited_party_ids');
           cachedEdited = raw ? JSON.parse(raw) : [];
-        } catch {}
+        } catch {
+          // ignore localStorage parse error
+        }
 
         for (const t of (transferData || [])) {
           const party = mappedParties.find(p => p.id === t.party_id);

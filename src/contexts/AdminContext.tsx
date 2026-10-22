@@ -15,65 +15,62 @@ const AdminContext = createContext<AdminContextType>({
   logout: () => { },
 });
 
-const ADMIN_CREDENTIALS = {
-  username: 'escrow.bms@gmail.com',
-  password: 'escrow12345'
-};
+export const ADMIN_EMAIL = 'escrow.bms@gmail.com';
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return localStorage.getItem('admin_authenticated') === 'true';
-  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user?.email === ADMIN_CREDENTIALS.username) {
-          setIsAdminAuthenticated(true);
-          localStorage.setItem('admin_authenticated', 'true');
-        } else {
-          // Keep local storage check if session is still loading or if they authenticated locally
-          const cached = localStorage.getItem('admin_authenticated') === 'true';
-          setIsAdminAuthenticated(cached);
+        if (mounted) {
+          const isAuthed = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+          setIsAdminAuthenticated(isAuthed);
         }
       } catch (error) {
         console.error('Error checking admin session:', error);
       } finally {
-        setIsInitializing(false);
+        if (mounted) {
+          setIsInitializing(false);
+        }
       }
     };
 
     checkSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user?.email === ADMIN_CREDENTIALS.username) {
-        setIsAdminAuthenticated(true);
-        localStorage.setItem('admin_authenticated', 'true');
-      } else {
-        setIsAdminAuthenticated(false);
-        localStorage.removeItem('admin_authenticated');
+      if (mounted) {
+        const isAuthed = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+        setIsAdminAuthenticated(isAuthed);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
-      if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: username,
-          password: password,
-        });
+      const cleanEmail = username.trim().toLowerCase();
+      if (cleanEmail !== ADMIN_EMAIL.toLowerCase()) {
+        return false;
+      }
 
-        if (error) throw error;
-        if (data.user) {
-          setIsAdminAuthenticated(true);
-          localStorage.setItem('admin_authenticated', 'true');
-          return true;
-        }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: password,
+      });
+
+      if (error) throw error;
+      if (data.user && data.user.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        setIsAdminAuthenticated(true);
+        return true;
       }
       return false;
     } catch (err) {
@@ -89,7 +86,6 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       console.error('Error signing out admin:', err);
     }
     setIsAdminAuthenticated(false);
-    localStorage.removeItem('admin_authenticated');
   };
 
   return (

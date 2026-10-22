@@ -41,7 +41,7 @@ export const LedgerPrintLayout = ({
     <div className="hidden print:block bg-white text-black p-0 h-auto">
       <style dangerouslySetInnerHTML={{ __html: `
         @media print {
-          nav, footer, header, .navbar, .footer, .print\:hidden, [class*="print:hidden"] {
+          nav, footer, header, .navbar, .footer, .print\\:hidden, [class*="print:hidden"] {
             display: none !important;
           }
           html, body {
