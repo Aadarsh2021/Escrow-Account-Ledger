@@ -1211,9 +1211,9 @@ const LedgerView = () => {
                 <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-3 lg:gap-4 items-stretch lg:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
                   {isLofferUser ? (
                     /* LOFFERS DTF Custom Layout: Transfer To (Fixed) | Qty | Rate | Total Amount | Remarks */
-                    <div className="flex-grow grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4">
+                    <div className="flex-grow grid grid-cols-2 md:grid-cols-12 gap-2.5 sm:gap-3 lg:gap-4">
                       {/* 1. Transfer To (Fixed) */}
-                      <div className="space-y-1.5 md:col-span-3">
+                      <div className="space-y-1.5 col-span-2 md:col-span-3">
                         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
                         <div className="relative bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 md:py-3 px-4 flex items-center cursor-not-allowed">
                           <div className="flex items-center gap-2 overflow-hidden w-full">
@@ -1226,7 +1226,7 @@ const LedgerView = () => {
                       </div>
 
                       {/* 2. Quantity */}
-                      <div className="space-y-1.5 md:col-span-2">
+                      <div className="space-y-1.5 col-span-1 md:col-span-2">
                         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Quantity (Qty)</label>
                         <input 
                           ref={quantityInputRef}
@@ -1246,7 +1246,7 @@ const LedgerView = () => {
                       </div>
 
                       {/* 3. Rate */}
-                      <div className="space-y-1.5 md:col-span-2">
+                      <div className="space-y-1.5 col-span-1 md:col-span-2">
                         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Rate (₹)</label>
                         <input 
                           ref={rateInputRef}
@@ -1266,7 +1266,7 @@ const LedgerView = () => {
                       </div>
 
                       {/* 4. Total Amount */}
-                      <div className="space-y-1.5 md:col-span-2">
+                      <div className="space-y-1.5 col-span-2 md:col-span-2">
                         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Total Amount (₹)</label>
                         <input 
                           ref={amountInputRef} 
@@ -1287,7 +1287,7 @@ const LedgerView = () => {
                       </div>
 
                       {/* 5. Remarks */}
-                      <div className="space-y-1.5 md:col-span-3">
+                      <div className="space-y-1.5 col-span-2 md:col-span-3">
                         <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
                         <div className="relative">
                           <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />

@@ -217,18 +217,18 @@ const BackupPage: React.FC = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8 sm:py-12">
+    <div className="max-w-4xl mx-auto px-3.5 sm:px-6 py-6 sm:py-10 pb-28 sm:pb-16">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/25">
-            <Database className="w-6 h-6" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 sm:w-12 sm:h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-blue-500/25 shrink-0">
+            <Database className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            <h1 className="text-xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
               Backup & Online Backup
             </h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
               Save your ledger records directly to Google Drive or download local offline files.
             </p>
           </div>
@@ -236,7 +236,7 @@ const BackupPage: React.FC = () => {
         <button 
           type="button"
           onClick={() => navigate('/ledger')}
-          className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs transition-all self-start sm:self-center"
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs transition-all w-full sm:w-auto self-start sm:self-center"
         >
           <XCircle className="w-4 h-4" />
           Back to Ledger
@@ -244,34 +244,36 @@ const BackupPage: React.FC = () => {
       </div>
 
       {/* Mode Tabs */}
-      <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl mb-8 border border-slate-200 dark:border-slate-700/60">
+      <div className="flex bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl mb-6 sm:mb-8 border border-slate-200 dark:border-slate-700/60">
         <button
           onClick={() => {
             setActiveTab('cloud');
             navigate('/configure/online-backup');
           }}
-          className={`flex-1 py-3 px-5 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
+          className={`flex-1 py-2.5 sm:py-3 px-2 sm:px-5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all text-center ${
             activeTab === 'cloud'
               ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-md shadow-slate-200/50 dark:shadow-none'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <Cloud className="w-5 h-5" />
-          Google Drive Online Backup
+          <Cloud className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+          <span className="hidden sm:inline">Google Drive Online Backup</span>
+          <span className="sm:hidden">Online (Drive)</span>
         </button>
         <button
           onClick={() => {
             setActiveTab('local');
             navigate('/configure/backup');
           }}
-          className={`flex-1 py-3 px-5 rounded-xl font-bold text-sm flex items-center justify-center gap-2.5 transition-all ${
+          className={`flex-1 py-2.5 sm:py-3 px-2 sm:px-5 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2.5 transition-all text-center ${
             activeTab === 'local'
               ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow-md shadow-slate-200/50 dark:shadow-none'
               : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
-          <HardDrive className="w-5 h-5" />
-          Local Offline Backup
+          <HardDrive className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+          <span className="hidden sm:inline">Local Offline Backup</span>
+          <span className="sm:hidden">Offline (Local)</span>
         </button>
       </div>
 
@@ -479,18 +481,18 @@ const BackupPage: React.FC = () => {
               ) : (
                 <div className="divide-y divide-slate-100 dark:divide-slate-800">
                   {driveBackups.map((file) => (
-                    <div key={file.id} className="py-3.5 flex items-center justify-between gap-4 group">
-                      <div className="flex items-center gap-3 min-w-0">
+                    <div key={file.id} className="py-3.5 flex flex-col xs:flex-row xs:items-center justify-between gap-3 group">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                           <FileJson className="w-4 h-4" />
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px] xs:max-w-xs sm:max-w-md">
                             {file.name}
                           </p>
-                          <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-0.5">
+                          <div className="flex items-center gap-2.5 text-[10px] sm:text-[11px] text-slate-400 mt-0.5">
                             <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
+                              <Calendar className="w-3 h-3 shrink-0" />
                               {new Date(file.createdTime).toLocaleString()}
                             </span>
                             {file.size && (
@@ -504,7 +506,7 @@ const BackupPage: React.FC = () => {
                         type="button"
                         onClick={() => handleSelectDriveFileForRestore(file)}
                         disabled={restoring}
-                        className="px-4 py-1.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold transition shadow-sm shrink-0"
+                        className="w-full xs:w-auto px-4 py-2 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-600 hover:text-white text-blue-600 dark:text-blue-400 rounded-xl text-xs font-bold transition shadow-sm shrink-0 flex items-center justify-center"
                       >
                         Restore
                       </button>
