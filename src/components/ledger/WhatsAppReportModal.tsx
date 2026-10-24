@@ -11,8 +11,7 @@ import {
   FileText, 
   AlertCircle,
   ExternalLink,
-  Share2,
-  Image as ImageIcon
+  Share2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import type { Party, Transaction } from '../../hooks/useLedgerTransactions';
@@ -89,7 +88,6 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [billPublicUrl, setBillPublicUrl] = useState<string>('');
   const [uploadingCloud, setUploadingCloud] = useState<boolean>(false);
-  const [includeBillLink, setIncludeBillLink] = useState<boolean>(false);
   const [canDirectShare, setCanDirectShare] = useState<boolean>(false);
 
   const reportCardRef = useRef<HTMLDivElement>(null);
@@ -213,7 +211,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
     `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
     `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-    (includeBillLink ? (billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : (uploadingCloud ? `⏳ [Generating Short Bill Link...]\n\n` : '')) : '') +
+    (billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : (uploadingCloud ? `⏳ [Generating Short Bill Link...]\n\n` : '')) +
     `Thank you for your business! 🙏\n` +
     `- *${companyName}*`;
 
@@ -276,8 +274,8 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
 
     let finalBillUrl = billPublicUrl;
 
-    // Only upload to cloud storage if user requested a link
-    if (includeBillLink && !finalBillUrl && imageBlob) {
+    // Ensure bill is uploaded to cloud storage and short link is ready
+    if (!finalBillUrl && imageBlob) {
       setUploadingCloud(true);
       try {
         const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -314,7 +312,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
       `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
       `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
       `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-      (includeBillLink && finalBillUrl ? `🔗 *View / Download Bill:*\n${finalBillUrl}\n\n` : '') +
+      (finalBillUrl ? `🔗 *View / Download Bill:*\n${finalBillUrl}\n\n` : '') +
       `Thank you for your business! 🙏\n` +
       `- *${companyName}*`;
 
@@ -522,23 +520,17 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             </div>
           )}
 
-          {/* Options: Direct Image vs Short Link */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+          {/* Short Link Ready Indicator */}
+          <div className="flex items-center justify-between gap-3 bg-emerald-50/70 dark:bg-emerald-950/30 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/40">
             <div className="flex items-center gap-2">
-              <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
-              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                Direct Bill Image: {canDirectShare ? 'Auto-attached via WhatsApp' : 'Auto-copied for 1-click Ctrl+V'}
+              <span className="text-base">🔗</span>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                Short Bill Link: <span className="text-emerald-700 dark:text-emerald-400 font-mono font-black">{billPublicUrl || (uploadingCloud ? 'Generating short link...' : 'Ready on Send')}</span>
               </span>
             </div>
-            <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-slate-600 dark:text-slate-400">
-              <input
-                type="checkbox"
-                checked={includeBillLink}
-                onChange={(e) => setIncludeBillLink(e.target.checked)}
-                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
-              />
-              <span>Include view/download link in message</span>
-            </label>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-200/60 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 rounded-full">
+              Auto-Included
+            </span>
           </div>
 
           {/* WhatsApp Text Template Preview */}
