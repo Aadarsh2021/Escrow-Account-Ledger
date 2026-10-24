@@ -24,7 +24,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { BackupModal } from '../backup/BackupModal';
 
 const Navbar = () => {
   const { user, profile, signOut } = useAuth();
@@ -34,17 +33,6 @@ const Navbar = () => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-  
-  // Backup modal state
-  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
-  const [backupInitialTab, setBackupInitialTab] = useState<'cloud' | 'local'>('cloud');
-
-  const openBackup = (tab: 'cloud' | 'local') => {
-    setBackupInitialTab(tab);
-    setIsBackupModalOpen(true);
-    setActiveDropdown(null);
-    setIsMobileMenuOpen(false);
-  };
 
   const isLofferUser = 
     user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
@@ -73,8 +61,8 @@ const Navbar = () => {
       icon: <Settings className="w-4 h-4" />,
       subItems: [
         { name: 'Company Settings', icon: <Building2 className="w-4 h-4" />, path: '/configure/company' },
-        { name: 'Backup', icon: <Download className="w-4 h-4" />, path: '/configure/backup', action: () => openBackup('local') },
-        { name: 'Online Backup', icon: <Cloud className="w-4 h-4" />, path: '/configure/online-backup', action: () => openBackup('cloud') },
+        { name: 'Backup', icon: <Download className="w-4 h-4" />, path: '/configure/backup' },
+        { name: 'Online Backup', icon: <Cloud className="w-4 h-4" />, path: '/configure/online-backup' },
         { name: 'Clear Data & Keep Balance', icon: <RefreshCw className="w-4 h-4" />, path: '/configure/clear-data-keep-balance' },
         { name: 'Clear All Balance', icon: <Trash2 className="w-4 h-4" />, path: '/configure/clear-all-balance' },
         { name: 'Clear Backup', icon: <FileX className="w-4 h-4" />, path: '/configure/clear-backup' }
@@ -141,14 +129,7 @@ const Navbar = () => {
                       <Link
                         key={sub.name}
                         to={sub.path}
-                        onClick={(e) => {
-                          if (sub.action) {
-                            e.preventDefault();
-                            sub.action();
-                          } else {
-                            setActiveDropdown(null);
-                          }
-                        }}
+                        onClick={() => setActiveDropdown(null)}
                         className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                       >
                         {sub.icon}
@@ -177,16 +158,16 @@ const Navbar = () => {
 
           {/* Right Side Actions */}
           <div className="flex items-center gap-2.5 lg:gap-3.5">
-            {/* Quick Drive Backup Button */}
+            {/* Quick Drive Backup Link */}
             {user && (
-              <button
-                onClick={() => openBackup('cloud')}
+              <Link
+                to="/configure/online-backup"
                 className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-blue-50/80 hover:bg-blue-100/90 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 rounded-xl transition-all border border-blue-200/50 dark:border-blue-800/60 shadow-sm active:scale-95 flex items-center gap-1.5 text-xs font-bold"
                 title="Google Drive Cloud Backup"
               >
                 <Cloud className="w-4 h-4" />
                 <span className="hidden lg:inline">Cloud Backup</span>
-              </button>
+              </Link>
             )}
 
             {/* Theme Toggle Button */}
@@ -275,14 +256,7 @@ const Navbar = () => {
                       <Link
                         key={sub.name}
                         to={sub.path}
-                        onClick={(e) => {
-                          if (sub.action) {
-                            e.preventDefault();
-                            sub.action();
-                          } else {
-                            setIsMobileMenuOpen(false);
-                          }
-                        }}
+                        onClick={() => setIsMobileMenuOpen(false)}
                         className="flex flex-col justify-between p-3 bg-slate-50 dark:bg-slate-950 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 rounded-xl transition-all border border-slate-100 dark:border-slate-900/30"
                       >
                         <div className="text-slate-400 dark:text-slate-500 mb-1">{sub.icon}</div>
@@ -356,16 +330,6 @@ const Navbar = () => {
         </div>,
         document.body
       )}
-
-      {/* Backup and Online Backup Modal */}
-      <BackupModal
-        isOpen={isBackupModalOpen}
-        onClose={() => setIsBackupModalOpen(false)}
-        initialTab={backupInitialTab}
-        onRestoreCompleted={() => {
-          window.location.reload();
-        }}
-      />
     </nav>
   );
 };
