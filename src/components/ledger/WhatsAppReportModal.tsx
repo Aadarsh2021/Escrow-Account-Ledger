@@ -634,16 +634,54 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             </div>
           </div>
 
-          {/* Client Details Bar */}
-          <div className="grid grid-cols-2 gap-4 py-4 my-4 bg-slate-50 rounded-xl px-5 border border-slate-200">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Statement For (Client)</p>
-              <h3 className="text-lg font-black text-slate-900 mt-0.5">{party.party_name}</h3>
-              <p className="text-xs font-bold text-slate-500">SR NO: {party.sr_no}</p>
+          {/* Official WhatsApp Statement Template Banner inside Image */}
+          <div className="my-4 p-5 bg-emerald-50/70 rounded-2xl border-2 border-emerald-500/30 shadow-sm">
+            <div className="flex items-center justify-between pb-2.5 border-b border-emerald-200">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📄</span>
+                <span className="text-sm font-black text-slate-900 uppercase tracking-wide">
+                  {companyName} - Account Statement
+                </span>
+              </div>
+              <span className="text-[11px] font-bold px-3 py-0.5 bg-emerald-600 text-white rounded-full">
+                As of {formattedDate}
+              </span>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Client Mobile</p>
-              <h3 className="text-base font-black text-slate-800 mt-0.5">{phoneNumber || party.phone || 'N/A'}</h3>
+
+            <div className="pt-2.5 space-y-1 text-xs text-slate-800">
+              <p className="font-bold text-slate-900 text-sm">
+                Dear <span className="text-emerald-700 font-black">{party.party_name}</span>,
+              </p>
+              <p className="text-xs text-slate-600 font-medium">
+                Here is your transaction ledger statement as of {formattedDate}:
+              </p>
+            </div>
+
+            {/* Quick Metrics Grid */}
+            <div className="grid grid-cols-4 gap-2.5 mt-3 pt-3 border-t border-emerald-200/60 text-center">
+              <div className="bg-white p-2.5 rounded-xl border border-emerald-100 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Total Entries</p>
+                <p className="text-sm font-black text-slate-800 mt-0.5">{transactions.length}</p>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-rose-100 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-wider text-rose-500">Total Debit (DR)</p>
+                <p className="text-sm font-black text-rose-600 mt-0.5">₹{Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}</p>
+              </div>
+              <div className="bg-white p-2.5 rounded-xl border border-emerald-100 shadow-sm">
+                <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Total Credit (CR)</p>
+                <p className="text-sm font-black text-emerald-600 mt-0.5">₹{Math.round(totalCredit).toLocaleString('en-IN')}</p>
+              </div>
+              <div className={`p-2.5 rounded-xl border shadow-sm ${closingBalance >= 0 ? 'bg-emerald-100/50 border-emerald-300' : 'bg-rose-100/50 border-rose-300'}`}>
+                <p className="text-[9px] font-black uppercase tracking-wider text-slate-600">Net Balance</p>
+                <p className={`text-sm font-black mt-0.5 ${closingBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  ₹{Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} {balanceType}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-[11px] font-bold text-slate-600">
+              <span>Client Mobile: {phoneNumber || party.phone || 'N/A'}</span>
+              <span>Thank you for your business! 🙏 — <strong className="text-slate-900">{companyName}</strong></span>
             </div>
           </div>
 
