@@ -21,7 +21,9 @@ import {
   ChevronRight,
   Check,
   Menu,
-  X
+  X,
+  Building2,
+  Send
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,6 +35,7 @@ import { ConfirmDialog } from '../components/ledger/ConfirmDialog';
 import { DcReportModal } from '../components/ledger/DcReportModal';
 import { LedgerPrintLayout } from '../components/ledger/LedgerPrintLayout';
 import { PrintConfigModal } from '../components/ledger/PrintConfigModal';
+import { WhatsAppReportModal } from '../components/ledger/WhatsAppReportModal';
 
 // Hook and Type Imports
 import { useLedgerTransactions, type Party } from '../hooks/useLedgerTransactions';
@@ -56,7 +59,13 @@ const formatTime = (dateStr?: string) => {
 const LedgerView = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user: authUser } = useAuth();
+  const { user: authUser, profile } = useAuth();
+  
+  // Check if current user is LOFFERS DTF
+  const isLofferUser = 
+    authUser?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
+    authUser?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
+    profile?.company_name?.toLowerCase() === 'loffers dtf';
   
   // Parties state and caching logic
   const [parties, setParties] = useState<Party[]>(() => {
@@ -89,11 +98,14 @@ const LedgerView = () => {
   const [printStartDate, setPrintStartDate] = useState('');
   const [printEndDate, setPrintEndDate] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isWhatsAppModalOpen, setIsWhatsAppModalOpen] = useState(false);
 
   
   // Entry Form inputs
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
+  const [quantity, setQuantity] = useState('');
+  const [rate, setRate] = useState('');
   const [linkedParty, setLinkedParty] = useState<Party | null>(null);
   const [linkedSearch, setLinkedSearch] = useState('');
   
@@ -106,6 +118,8 @@ const LedgerView = () => {
   // Focus and layout refs
   const searchInputRef = useRef<HTMLInputElement>(null);
   const amountInputRef = useRef<HTMLInputElement>(null);
+  const quantityInputRef = useRef<HTMLInputElement>(null);
+  const rateInputRef = useRef<HTMLInputElement>(null);
   const linkedSearchRef = useRef<HTMLInputElement>(null);
   const remarksInputRef = useRef<HTMLInputElement>(null);
   const headerSearchRef = useRef<HTMLInputElement>(null);
@@ -114,6 +128,7 @@ const LedgerView = () => {
   const transactionListRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(0);
   const prevPartyIdRef = useRef<string | null>(null);
+  const localToggledIdsRef = useRef<Set<string>>(new Set());
 
   // confirmation dialog state passing
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -148,6 +163,7 @@ const LedgerView = () => {
   const {
     transactions,
     setTransactions,
+    loadingTransactions,
     printTransactions,
     closingBalance,
     selectedTnsIds,
@@ -194,6 +210,11 @@ const LedgerView = () => {
 
   const toggleCheckedTns = (tnsId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    localToggledIdsRef.current.add(tnsId);
+    setTimeout(() => {
+      localToggledIdsRef.current.delete(tnsId);
+    }, 5000);
+
     let nextCheckedState = false;
 
     setTransactions(prev => {
@@ -227,6 +248,11 @@ const LedgerView = () => {
 
   const toggleSelectAllChecked = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    transactions.forEach(t => localToggledIdsRef.current.add(t.id));
+    setTimeout(() => {
+      localToggledIdsRef.current.clear();
+    }, 5000);
+
     const allChecked = transactions.length > 0 && transactions.every(t => t.is_checked);
     const nextCheckedState = !allChecked;
 
@@ -327,10 +353,11 @@ const LedgerView = () => {
     isOldRecordsViewRef.current = isOldRecordsView;
   }, [isOldRecordsView]);
 
+  const prevOldRecordsViewRef = useRef(isOldRecordsView);
+
   useEffect(() => {
     if (selectedParty) {
       fetchTransactions(selectedParty.id, isOldRecordsView);
-      fetchAllTransactionsForPrint(selectedParty.id);
       
       setTimeout(() => {
         linkedSearchRef.current?.focus();
@@ -338,15 +365,38 @@ const LedgerView = () => {
 
       const channel = supabase.channel(`ledger-${selectedParty.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `party_id=eq.${selectedParty.id}` }, (payload: any) => {
-          if (payload?.eventType === 'UPDATE' && payload?.new && payload?.old) {
+          if (payload?.eventType === 'UPDATE' && payload?.new) {
             const newObj = payload.new;
-            const oldObj = payload.old;
-            const changedKeys = Object.keys(newObj).filter(k => newObj[k] !== oldObj[k]);
-            if (changedKeys.length === 1 && changedKeys[0] === 'is_checked') {
+            // 1. If we triggered this check locally, ignore the echo completely
+            if (localToggledIdsRef.current.has(newObj.id)) {
+              return;
+            }
+
+            // 2. If it's an is_checked toggle from another client, update in-place without refetching
+            let isOnlyCheckedToggle = false;
+            setTransactions(prev => {
+              const existing = prev.find(t => t.id === newObj.id);
+              if (existing) {
+                if (
+                  Number(existing.credit) === Number(newObj.credit) &&
+                  Number(existing.debit) === Number(newObj.debit) &&
+                  Number(existing.balance) === Number(newObj.balance) &&
+                  existing.remarks === newObj.remarks &&
+                  existing.is_settlement === newObj.is_settlement &&
+                  existing.is_finalized === newObj.is_finalized
+                ) {
+                  isOnlyCheckedToggle = true;
+                  return prev.map(t => t.id === newObj.id ? { ...t, is_checked: newObj.is_checked } : t);
+                }
+              }
+              return prev;
+            });
+
+            if (isOnlyCheckedToggle) {
               return;
             }
           }
-          fetchTransactions(selectedParty.id, isOldRecordsViewRef.current);
+          fetchTransactions(selectedParty.id, isOldRecordsViewRef.current, true);
           fetchAllTransactionsForPrint(selectedParty.id);
         })
         .subscribe();
@@ -357,7 +407,14 @@ const LedgerView = () => {
     }
   }, [selectedParty, isOldRecordsView]);
 
-  // Auto scroll to bottom when transactions load or a new transaction is added
+  useEffect(() => {
+    if (selectedParty) {
+      fetchAllTransactionsForPrint(selectedParty.id);
+    }
+  }, [selectedParty?.id]);
+
+  // Auto scroll to bottom ONLY when a new party is selected, view mode changes, or a new transaction is added.
+  // Preserves scroll position when ticking checkboxes, selecting rows, or updating existing records!
   const scrollToBottom = () => {
     const doScroll = () => {
       if (transactionListRef.current) {
@@ -368,26 +425,90 @@ const LedgerView = () => {
     requestAnimationFrame(doScroll);
     setTimeout(doScroll, 60);
     setTimeout(doScroll, 150);
-    setTimeout(doScroll, 300);
   };
 
   useEffect(() => {
-    if (selectedParty && transactions.length > 0) {
+    if (!selectedParty || transactions.length === 0) {
+      prevLengthRef.current = transactions.length;
+      prevPartyIdRef.current = selectedParty?.id || null;
+      prevOldRecordsViewRef.current = isOldRecordsView;
+      return;
+    }
+
+    const partyChanged = prevPartyIdRef.current !== selectedParty.id;
+    const viewChanged = prevOldRecordsViewRef.current !== isOldRecordsView;
+    const newTxAdded = transactions.length > prevLengthRef.current && prevLengthRef.current > 0;
+
+    if (partyChanged || viewChanged || newTxAdded || prevLengthRef.current === 0) {
       scrollToBottom();
     }
+
     prevLengthRef.current = transactions.length;
-    prevPartyIdRef.current = selectedParty?.id || null;
+    prevPartyIdRef.current = selectedParty.id;
+    prevOldRecordsViewRef.current = isOldRecordsView;
   }, [transactions, selectedParty?.id, isOldRecordsView]);
+
+  const lofferCompanyParty = parties.find(p => 
+    p.system_type === 'company' || 
+    p.party_name?.toLowerCase() === 'loffers dtf'
+  );
+
+  const calculateLofferAmount = (qVal: number, rVal: number, currentAmountStr: string) => {
+    const rawTotal = Math.round(Math.abs(qVal * rVal) * 100) / 100;
+    if (rawTotal === 0) return '0';
+    // If user explicitly removed '-' and typed a positive value, respect positive sign
+    const isExplicitlyPositive = currentAmountStr && !currentAmountStr.trim().startsWith('-') && parseFloat(currentAmountStr) > 0;
+    return isExplicitlyPositive ? String(rawTotal) : `-${rawTotal}`;
+  };
+
+  const handleQuantityChange = (val: string) => {
+    setQuantity(val);
+    const q = parseFloat(val);
+    const r = parseFloat(rate);
+    if (!isNaN(q) && !isNaN(r)) {
+      setAmount(isLofferUser ? calculateLofferAmount(q, r, amount) : String(Math.round(q * r * 100) / 100));
+    } else if (!val) {
+      setAmount('');
+    }
+  };
+
+  const handleRateChange = (val: string) => {
+    setRate(val);
+    const q = parseFloat(quantity);
+    const r = parseFloat(val);
+    if (!isNaN(q) && !isNaN(r)) {
+      setAmount(isLofferUser ? calculateLofferAmount(q, r, amount) : String(Math.round(q * r * 100) / 100));
+    } else if (!val) {
+      setAmount('');
+    }
+  };
+
+  // Keep Transfer To locked to LOFFERS DTF company party for LOFFERS DTF user
+  useEffect(() => {
+    if (isLofferUser && lofferCompanyParty && selectedParty) {
+      if (selectedParty.id !== lofferCompanyParty.id && (!linkedParty || linkedParty.id !== lofferCompanyParty.id)) {
+        setLinkedParty(lofferCompanyParty);
+        setLinkedSearch(lofferCompanyParty.party_name);
+      }
+    }
+  }, [isLofferUser, lofferCompanyParty, selectedParty?.id, linkedParty?.id]);
 
   const handlePartySelect = (party: Party) => {
     setSearchParams({ partyId: party.id });
     setSelectedParty(party);
     setSelectedTnsIds(new Set());
     setSearchQuery('');
-    setLinkedParty(null);
-    setLinkedSearch('');
+    if (isLofferUser && lofferCompanyParty && party.id !== lofferCompanyParty.id) {
+      setLinkedParty(lofferCompanyParty);
+      setLinkedSearch(lofferCompanyParty.party_name);
+    } else {
+      setLinkedParty(null);
+      setLinkedSearch('');
+    }
     setAmount('');
     setRemarks('');
+    setQuantity('');
+    setRate('');
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
     setIsOldRecordsView(false);
@@ -472,20 +593,43 @@ const LedgerView = () => {
 
   const handleSubmitEntry = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedParty || !amount || parseFloat(amount) === 0 || !linkedParty) return;
+    const effectiveLinkedParty = isLofferUser ? (linkedParty || lofferCompanyParty) : linkedParty;
+    if (!selectedParty || !amount || parseFloat(amount) === 0 || !effectiveLinkedParty) return;
     
-    const success = await createTransactionEntry(amount, remarks, linkedParty);
+    // Format remarks for LOFFERS DTF: append calculation if quantity & rate are provided
+    let finalRemarks = remarks.trim();
+    if (isLofferUser && quantity && rate) {
+      const calcText = `${quantity} * ${rate}`;
+      if (finalRemarks) {
+        finalRemarks = `${finalRemarks} (${calcText})`;
+      } else {
+        finalRemarks = calcText;
+      }
+    }
+
+    const success = await createTransactionEntry(amount, finalRemarks, effectiveLinkedParty);
     if (success) {
       setAmount('');
       setRemarks('');
-      setLinkedParty(null);
-      setLinkedSearch('');
-      linkedSearchRef.current?.focus();
+      setQuantity('');
+      setRate('');
+      if (!isLofferUser) {
+        setLinkedParty(null);
+        setLinkedSearch('');
+        linkedSearchRef.current?.focus();
+      } else {
+        quantityInputRef.current?.focus();
+      }
     }
   };
 
+  // For LOFFERS DTF, hide system-generated parties (Commission, company) from client list
+  const activePartyList = isLofferUser 
+    ? parties.filter(p => p.system_type === 'normal') 
+    : parties;
+
   // Searching and Pagination Computations
-  const filteredParties = parties.filter(p => 
+  const filteredParties = activePartyList.filter(p => 
     p.party_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     p.sr_no.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -515,13 +659,13 @@ const LedgerView = () => {
     (!isSearchActive || p.party_name.toLowerCase().includes(linkedSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(linkedSearch.toLowerCase()))
   );
   
-  const filteredHeaderParties = parties.filter(p => 
+  const filteredHeaderParties = activePartyList.filter(p => 
     p.id !== selectedParty?.id && 
     (p.party_name.toLowerCase().includes(headerSearch.toLowerCase()) || p.sr_no.toLowerCase().includes(headerSearch.toLowerCase()))
   );
 
   const firstSearchMatch = searchQuery
-    ? parties.find(p => p.party_name.toLowerCase().startsWith(searchQuery.toLowerCase()) || p.sr_no.toLowerCase().startsWith(searchQuery.toLowerCase()))
+    ? activePartyList.find(p => p.party_name.toLowerCase().startsWith(searchQuery.toLowerCase()) || p.sr_no.toLowerCase().startsWith(searchQuery.toLowerCase()))
     : null;
 
   const firstHeaderMatch = headerSearch
@@ -550,6 +694,7 @@ const LedgerView = () => {
     return val > 0 ? 'text-emerald-600' : 'text-rose-600';
   };
 
+
   const hasSettlementSelected = Array.from(selectedTnsIds).some(id => {
     const t = transactions.find(item => item.id === id);
     return t?.is_settlement === true;
@@ -576,7 +721,7 @@ const LedgerView = () => {
     { 
       name: 'Monday Final', 
       icon: <Calendar className="w-4 h-4" />, 
-      color: 'bg-emerald-600 text-white shadow-md shadow-emerald-200', 
+      color: 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-none hover:bg-indigo-700', 
       action: handleMondayFinal, 
       disabled: isOldRecordsView 
     },
@@ -585,11 +730,9 @@ const LedgerView = () => {
       icon: <History className="w-4 h-4" />, 
       color: isOldRecordsView ? 'bg-orange-600 text-white shadow-md shadow-orange-200' : 'bg-slate-100 text-slate-600', 
       action: () => {
-        const nextState = !isOldRecordsView;
-        setIsOldRecordsView(nextState);
+        setTransactions([]);
+        setIsOldRecordsView(prev => !prev);
         setSelectedTnsIds(new Set());
-        fetchTransactions(selectedParty!.id, nextState);
-        scrollToBottom();
       } 
     },
     { 
@@ -611,6 +754,12 @@ const LedgerView = () => {
       icon: <Printer className="w-4 h-4" />, 
       color: 'bg-slate-100 text-slate-600', 
       action: () => setIsPrintModalOpen(true) 
+    },
+    { 
+      name: 'WhatsApp Report', 
+      icon: <Send className="w-4 h-4 text-emerald-400" />, 
+      color: 'bg-emerald-600 text-white shadow-md shadow-emerald-500/20 hover:bg-emerald-700', 
+      action: () => setIsWhatsAppModalOpen(true) 
     },
     { 
       name: 'Check All', 
@@ -867,7 +1016,9 @@ const LedgerView = () => {
               {/* Closing Balance aligned right on desktop, spaced on mobile */}
               <div className="flex items-center justify-between lg:justify-end gap-4 w-full lg:w-auto shrink-0">
                 <div className="flex items-center gap-2 text-left lg:text-right whitespace-nowrap">
-                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">Closing Balance:</span>
+                  <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest leading-none">
+                    {isOldRecordsView ? 'Old Record Balance:' : 'Closing Balance:'}
+                  </span>
                   <span className={`text-xl lg:text-2xl font-black leading-none ${closingBalance >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}`}>
                     {closingBalance < 0 ? '- ' : ''}₹ {Math.round(Math.abs(closingBalance)).toLocaleString()}<span className="text-xs ml-1 uppercase font-bold">{closingBalance >= 0 ? 'Cr' : 'Dr'}</span>
                   </span>
@@ -889,8 +1040,53 @@ const LedgerView = () => {
           <div className="flex flex-col lg:flex-row flex-grow overflow-hidden min-h-0">
             <div className="flex-grow flex flex-col min-h-0 overflow-hidden relative">
               <div ref={transactionListRef} className="flex-grow overflow-y-auto px-4 md:px-6 py-4 bg-slate-50/30 dark:bg-slate-950/10">
+                {isOldRecordsView && (
+                  <div className="mb-3 px-4 py-2.5 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-900/50 rounded-xl flex items-center justify-between gap-2 text-orange-800 dark:text-orange-200 shadow-sm animate-in fade-in duration-200">
+                    <div className="flex items-center gap-2">
+                      <History className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" />
+                      <span className="text-xs font-black uppercase tracking-wider">
+                        Old Record History (Finalized Settlements)
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setIsOldRecordsView(false)}
+                      className="px-3 py-1 bg-white dark:bg-slate-900 border border-orange-300 dark:border-orange-800 text-orange-700 dark:text-orange-300 rounded-lg text-xs font-bold hover:bg-orange-100 dark:hover:bg-orange-900/40 transition-all shadow-xs"
+                    >
+                      Back to Active Ledger
+                    </button>
+                  </div>
+                )}
+
                 <div className="bg-white dark:bg-slate-900 rounded-[1.2rem] border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto transition-colors duration-200">
-                  <table className="w-full text-left min-w-[600px]">
+                  {loadingTransactions && transactions.length === 0 ? (
+                    <div className="py-20 flex flex-col items-center justify-center gap-3 text-slate-400">
+                      <RefreshCcw className="w-8 h-8 animate-spin text-blue-600" />
+                      <p className="font-bold text-sm">
+                        {isOldRecordsView ? 'Loading Old Records...' : 'Loading Transactions...'}
+                      </p>
+                    </div>
+                  ) : transactions.length === 0 ? (
+                    <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-400">
+                      <History className="w-10 h-10 stroke-1 text-slate-300 dark:text-slate-600 mb-1" />
+                      <p className="font-black text-base text-slate-600 dark:text-slate-300">
+                        {isOldRecordsView ? 'No Old Records Found' : 'No Active Transactions'}
+                      </p>
+                      <p className="text-xs font-medium text-slate-400 dark:text-slate-500 max-w-sm text-center">
+                        {isOldRecordsView 
+                          ? `No finalized settlement records found for ${selectedParty.party_name}. Records are archived here after Monday Final settlement.`
+                          : 'Add a new transaction using the form below.'}
+                      </p>
+                      {isOldRecordsView && (
+                        <button
+                          onClick={() => setIsOldRecordsView(false)}
+                          className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                        >
+                          View Active Ledger
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <table className="w-full text-left min-w-[600px]">
                     <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800 font-bold text-[10px] uppercase text-slate-400 dark:text-slate-500 tracking-widest">
                       <tr>
                         <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-center w-12">
@@ -911,7 +1107,7 @@ const LedgerView = () => {
                         <th className="px-1.5 md:px-3 py-1.5 md:py-2 text-right whitespace-nowrap">Time</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800/40 font-medium text-sm">
+                    <tbody className={`font-medium text-sm ${isLofferUser ? '' : 'divide-y divide-slate-50 dark:divide-slate-800/40'}`}>
                       {transactions.map((t) => (
                         <tr 
                           key={t.id} 
@@ -962,7 +1158,7 @@ const LedgerView = () => {
                                       ? 'text-sky-500 dark:text-sky-400 font-semibold'
                                       : 'text-slate-400 dark:text-slate-500'
                               }`}>
-                                ({t.remarks})
+                                {t.remarks.startsWith('(') && t.remarks.endsWith(')') ? t.remarks : `(${t.remarks})`}
                               </span>
                             )}
                           </td>
@@ -1008,117 +1204,213 @@ const LedgerView = () => {
                       ))}
                     </tbody>
                   </table>
+                  )}
                 </div>
               </div>
               <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
                 <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-3 lg:gap-4 items-stretch lg:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-3 lg:gap-4">
-                    <div className="space-y-1.5 md:col-span-1 relative" ref={dropdownRef}>
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
-                      <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
-                        <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
-                        {firstLinkedMatch && (
-                          <div className="absolute inset-0 pl-11 pr-8 py-2.5 md:py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
-                            <span className="text-transparent">{firstLinkedMatch.party_name.slice(0, linkedSearch.length)}</span>
-                            <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
-                              {firstLinkedMatch.party_name.slice(linkedSearch.length)}
-                              <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[9px] text-blue-500 font-black shadow-xs">TAB</kbd>
+                  {isLofferUser ? (
+                    /* LOFFERS DTF Custom Layout: Transfer To (Fixed) | Qty | Rate | Total Amount | Remarks */
+                    <div className="flex-grow grid grid-cols-1 md:grid-cols-12 gap-3 lg:gap-4">
+                      {/* 1. Transfer To (Fixed) */}
+                      <div className="space-y-1.5 md:col-span-3">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
+                        <div className="relative bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 md:py-3 px-4 flex items-center cursor-not-allowed">
+                          <div className="flex items-center gap-2 overflow-hidden w-full">
+                            <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                            <span className="font-bold text-slate-800 dark:text-white text-sm md:text-base truncate">
+                              {lofferCompanyParty?.party_name || 'LOFFERS DTF'}
                             </span>
                           </div>
-                        )}
+                        </div>
+                      </div>
+
+                      {/* 2. Quantity */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Quantity (Qty)</label>
                         <input 
-                          ref={linkedSearchRef} 
-                          placeholder="Search Party..." 
-                          className="w-full pl-11 pr-8 py-2.5 md:py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10 text-sm md:text-base" 
-                          value={linkedSearch} 
-                          onChange={(e) => { 
-                            const val = e.target.value;
-                            setLinkedSearch(val); 
-                            setIsLinkedSearchOpen(true); 
-                            setHighlightedIndex(0); 
-                            if (linkedParty && val !== linkedParty.party_name) {
-                              setLinkedParty(null);
+                          ref={quantityInputRef}
+                          type="number" 
+                          step="any"
+                          placeholder="Qty" 
+                          className="w-full px-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-base md:text-lg text-slate-900 dark:text-white transition-colors" 
+                          value={quantity} 
+                          onChange={(e) => handleQuantityChange(e.target.value)} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              rateInputRef.current?.focus();
                             }
-                          }} 
-                          onClick={() => setIsLinkedSearchOpen(true)} 
-                          onKeyDown={(e) => { 
-                            if (e.key === 'Escape') {
+                          }}
+                        />
+                      </div>
+
+                      {/* 3. Rate */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Rate (₹)</label>
+                        <input 
+                          ref={rateInputRef}
+                          type="number" 
+                          step="any"
+                          placeholder="Rate" 
+                          className="w-full px-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-base md:text-lg text-slate-900 dark:text-white transition-colors" 
+                          value={rate} 
+                          onChange={(e) => handleRateChange(e.target.value)} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
                               e.preventDefault();
-                              setIsLinkedSearchOpen(false);
-                            } else if (e.key === 'ArrowDown') { 
+                              remarksInputRef.current?.focus();
+                            }
+                          }}
+                        />
+                      </div>
+
+                      {/* 4. Total Amount */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Total Amount (₹)</label>
+                        <input 
+                          ref={amountInputRef} 
+                          required 
+                          type="number" 
+                          step="1" 
+                          placeholder="Total" 
+                          className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg md:text-xl transition-colors ${getAmountColorClass()}`} 
+                          value={amount} 
+                          onChange={(e) => setAmount(e.target.value)} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
                               e.preventDefault();
+                              remarksInputRef.current?.focus();
+                            }
+                          }}
+                        />
+                      </div>
+
+                      {/* 5. Remarks */}
+                      <div className="space-y-1.5 md:col-span-3">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
+                        <div className="relative">
+                          <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                          <input 
+                            ref={remarksInputRef}
+                            placeholder="Details (Optional)..." 
+                            className="w-full pl-11 pr-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 text-sm md:text-base" 
+                            value={remarks} 
+                            onChange={(e) => setRemarks(e.target.value)} 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Default Layout for all other users */
+                    <div className="flex-grow grid grid-cols-1 md:grid-cols-4 gap-3 lg:gap-4">
+                      <div className="space-y-1.5 md:col-span-1 relative" ref={dropdownRef}>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
+                        <div className="relative bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus-within:ring-4 focus-within:ring-blue-600/10 focus-within:border-blue-600 transition-all flex items-center">
+                          <ArrowRightLeft className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-400 z-10" />
+                          {firstLinkedMatch && (
+                            <div className="absolute inset-0 pl-11 pr-8 py-2.5 md:py-3 pointer-events-none flex items-center font-bold text-slate-800 dark:text-slate-300 select-none z-0">
+                              <span className="text-transparent">{firstLinkedMatch.party_name.slice(0, linkedSearch.length)}</span>
+                              <span className="inline-flex items-center gap-1.5 bg-blue-50/95 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30 rounded-lg px-2 py-0.5 text-xs font-black ml-1 shadow-sm shrink-0 animate-in fade-in-50 zoom-in-95 duration-150">
+                                {firstLinkedMatch.party_name.slice(linkedSearch.length)}
+                                <kbd className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-1 text-[9px] text-blue-500 font-black shadow-xs">TAB</kbd>
+                              </span>
+                            </div>
+                          )}
+                          <input 
+                            ref={linkedSearchRef} 
+                            placeholder="Search Party..." 
+                            className="w-full pl-11 pr-8 py-2.5 md:py-3 bg-transparent outline-none font-bold text-slate-800 dark:text-white relative z-10 text-sm md:text-base" 
+                            value={linkedSearch} 
+                            onChange={(e) => { 
+                              const val = e.target.value;
+                              setLinkedSearch(val); 
                               setIsLinkedSearchOpen(true); 
-                              setHighlightedIndex(p => Math.min(p+1, filteredLinkedParties.length-1)); 
-                            } else if (e.key === 'ArrowUp') {
-                              e.preventDefault();
-                              setHighlightedIndex(p => Math.max(p-1, 0)); 
-                            } else if (e.key === 'Enter' || e.key === 'Tab') {
-                              if (isSearchActive && firstLinkedMatch) {
-                                e.preventDefault();
-                                handleSelectLinkedParty(firstLinkedMatch);
-                              } else if (isSearchActive && filteredLinkedParties.length > 0) {
-                                e.preventDefault();
-                                handleSelectLinkedParty(filteredLinkedParties[highlightedIndex]);
-                              } else if (linkedParty) {
-                                e.preventDefault();
-                                amountInputRef.current?.focus();
+                              setHighlightedIndex(0); 
+                              if (linkedParty && val !== linkedParty.party_name) {
+                                setLinkedParty(null);
                               }
-                            }
-                          }} 
-                        />
-                        <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 pointer-events-none" />
-                        {isLinkedSearchOpen && filteredLinkedParties.length > 0 && (
-                          <div className="absolute bottom-full left-0 w-full mb-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl dark:shadow-none max-h-60 overflow-y-auto z-50">
-                            {filteredLinkedParties.map((p, i) => (
-                              <div 
-                                key={p.id} 
-                                onClick={() => handleSelectLinkedParty(p)} 
-                                className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-455' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
-                              >
-                                <span className="font-bold">{p.party_name}</span>
-                                <span className="text-[10px] font-black opacity-40 dark:opacity-60 uppercase">{p.sr_no}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                            }} 
+                            onClick={() => setIsLinkedSearchOpen(true)} 
+                            onKeyDown={(e) => { 
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setIsLinkedSearchOpen(false);
+                              } else if (e.key === 'ArrowDown') { 
+                                e.preventDefault();
+                                setIsLinkedSearchOpen(true); 
+                                setHighlightedIndex(p => Math.min(p+1, filteredLinkedParties.length-1)); 
+                              } else if (e.key === 'ArrowUp') {
+                                e.preventDefault();
+                                setHighlightedIndex(p => Math.max(p-1, 0)); 
+                              } else if (e.key === 'Enter' || e.key === 'Tab') {
+                                if (isSearchActive && firstLinkedMatch) {
+                                  e.preventDefault();
+                                  handleSelectLinkedParty(firstLinkedMatch);
+                                } else if (isSearchActive && filteredLinkedParties.length > 0) {
+                                  e.preventDefault();
+                                  handleSelectLinkedParty(filteredLinkedParties[highlightedIndex]);
+                                } else if (linkedParty) {
+                                  e.preventDefault();
+                                  amountInputRef.current?.focus();
+                                }
+                              }
+                            }} 
+                          />
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 dark:text-slate-600 z-10 pointer-events-none" />
+                          {isLinkedSearchOpen && filteredLinkedParties.length > 0 && (
+                            <div className="absolute bottom-full left-0 w-full mb-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl dark:shadow-none max-h-60 overflow-y-auto z-50">
+                              {filteredLinkedParties.map((p, i) => (
+                                <div 
+                                  key={p.id} 
+                                  onClick={() => handleSelectLinkedParty(p)} 
+                                  className={`px-5 py-3 cursor-pointer flex justify-between items-center ${i === highlightedIndex ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-455' : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'}`}
+                                >
+                                  <span className="font-bold">{p.party_name}</span>
+                                  <span className="text-[10px] font-black opacity-40 dark:opacity-60 uppercase">{p.sr_no}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-1.5 md:col-span-1">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
-                      <input 
-                        ref={amountInputRef} 
-                        required 
-                        type="number" 
-                        step="1" 
-                        placeholder="3000 (CR) or -3000 (DR)" 
-                        className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg md:text-xl transition-colors ${getAmountColorClass()}`} 
-                        value={amount} 
-                        onChange={(e) => setAmount(e.target.value)} 
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            remarksInputRef.current?.focus();
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
-                      <div className="relative">
-                        <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                      <div className="space-y-1.5 md:col-span-1">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Amount (₹)</label>
                         <input 
-                          ref={remarksInputRef}
-                          placeholder="Enter details..." 
-                          className="w-full pl-11 pr-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 text-sm md:text-base" 
-                          value={remarks} 
-                          onChange={(e) => setRemarks(e.target.value)} 
+                          ref={amountInputRef} 
+                          required 
+                          type="number" 
+                          step="1" 
+                          placeholder="3000 (CR) or -3000 (DR)" 
+                          className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg md:text-xl transition-colors ${getAmountColorClass()}`} 
+                          value={amount} 
+                          onChange={(e) => setAmount(e.target.value)} 
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              remarksInputRef.current?.focus();
+                            }
+                          }}
                         />
                       </div>
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
+                        <div className="relative">
+                          <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
+                          <input 
+                            ref={remarksInputRef}
+                            placeholder="Enter details..." 
+                            className="w-full pl-11 pr-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 text-sm md:text-base" 
+                            value={remarks} 
+                            onChange={(e) => setRemarks(e.target.value)} 
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <button 
                     type="submit" 
-                    disabled={submitting || !amount || parseFloat(amount) === 0 || !linkedParty || isOldRecordsView} 
+                    disabled={submitting || !amount || parseFloat(amount) === 0 || (!isLofferUser && !linkedParty) || isOldRecordsView} 
                     className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 md:py-3 rounded-xl font-black text-base flex items-center justify-center gap-3 transition-all shadow-lg shadow-blue-200 dark:shadow-none disabled:opacity-50 h-[46px] md:h-[52px] w-full lg:w-auto shrink-0"
                   >
                     {submitting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : 'Save Entry'}
@@ -1230,6 +1522,21 @@ const LedgerView = () => {
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
         onConfirm={handlePrintConfirm}
+      />
+
+      <WhatsAppReportModal
+        isOpen={isWhatsAppModalOpen}
+        onClose={() => setIsWhatsAppModalOpen(false)}
+        party={selectedParty}
+        transactions={transactions}
+        companyName={profile?.company_name || 'LOFFERS DTF'}
+        companyPhone={profile?.company_phone || ''}
+        onPartyPhoneUpdated={(partyId, newPhone) => {
+          setParties(prev => prev.map(p => p.id === partyId ? { ...p, phone: newPhone } : p));
+          if (selectedParty && selectedParty.id === partyId) {
+            setSelectedParty(prev => prev ? { ...prev, phone: newPhone } : null);
+          }
+        }}
       />
       </div>
 

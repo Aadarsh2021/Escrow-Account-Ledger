@@ -26,7 +26,11 @@ interface PartyBalance {
 }
 
 const BalanceSheet = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+  const isLofferUser = 
+    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
+    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
+    profile?.company_name?.toLowerCase() === 'loffers dtf';
   const navigate = useNavigate();
   const [parties, setParties] = useState<PartyBalance[]>(() => {
     try {
@@ -111,7 +115,7 @@ const BalanceSheet = () => {
         return numA - numB || a.party_name.localeCompare(b.party_name);
       });
 
-      setParties(mappedParties);
+      setParties(isLofferUser ? mappedParties.filter(p => p.system_type === 'normal') : mappedParties);
       try {
         localStorage.setItem('cached_balance_sheet', JSON.stringify(mappedParties));
       } catch (e) {

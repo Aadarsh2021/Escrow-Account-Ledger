@@ -10,19 +10,29 @@ import {
   Save, 
   Loader2,
   AlertCircle,
-  XCircle
+  XCircle,
+  Phone
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 
 const CreateParty = () => {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Check if current user is LOFFERS DTF
+  const isLofferUser = 
+    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
+    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
+    profile?.company_name?.toLowerCase() === 'loffers dtf';
+
   const [formData, setFormData] = useState({
     srNo: '',
     partyName: '',
+    phone: '',
     status: 'take', // take or give
     commissionType: 'with', // with or without
     commissionRate: '3.5' // default 3.5% for take
@@ -30,9 +40,15 @@ const CreateParty = () => {
 
   const fetchNextSrNo = async () => {
     try {
-      const { count, error } = await supabase
+      let query = supabase
         .from('parties')
         .select('*', { count: 'exact', head: true });
+
+      if (user?.id) {
+        query = query.eq('user_id', user.id);
+      }
+
+      const { count, error } = await query;
         
       if (!error && count !== null) {
         setFormData(prev => ({ ...prev, srNo: String(count + 1) }));
@@ -47,17 +63,22 @@ const CreateParty = () => {
 
   useEffect(() => {
     fetchNextSrNo();
-  }, []);
+  }, [user?.id]);
 
-  // Auto-update rate based on status
+  // Auto-update rate based on status or user override
   useEffect(() => {
+    if (isLofferUser) {
+      setFormData(prev => ({ ...prev, commissionType: 'without', commissionRate: '0' }));
+      return;
+    }
+
     if (formData.commissionType === 'with') {
       const newRate = formData.status === 'take' ? '3.5' : '1';
       setFormData(prev => ({ ...prev, commissionRate: newRate }));
     } else {
       setFormData(prev => ({ ...prev, commissionRate: '0' }));
     }
-  }, [formData.status, formData.commissionType]);
+  }, [formData.status, formData.commissionType, isLofferUser]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -71,18 +92,20 @@ const CreateParty = () => {
     setSuccess(false);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const activeUser = currentUser || user;
+      if (!activeUser) throw new Error("User not authenticated");
 
       const { error: dbError } = await supabase
         .from('parties')
         .insert([{
-          user_id: user.id,
+          user_id: activeUser.id,
           sr_no: formData.srNo,
           party_name: formData.partyName,
-          status: formData.status,
-          commission_type: formData.commissionType,
-          commission_rate: parseFloat(formData.commissionRate)
+          phone: formData.phone.trim() || null,
+          status: isLofferUser ? 'take' : formData.status,
+          commission_type: isLofferUser ? 'without' : formData.commissionType,
+          commission_rate: isLofferUser ? 0 : parseFloat(formData.commissionRate || '0')
         }]);
 
       if (dbError) throw dbError;
@@ -91,9 +114,10 @@ const CreateParty = () => {
       setFormData({
         srNo: '',
         partyName: '',
+        phone: '',
         status: 'take',
-        commissionType: 'with',
-        commissionRate: '3.5'
+        commissionType: isLofferUser ? 'without' : 'with',
+        commissionRate: isLofferUser ? '0' : '3.5'
       });
       // Fetch the next serial number for the next entry
       await fetchNextSrNo();
@@ -128,7 +152,7 @@ const CreateParty = () => {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className={isLofferUser ? "max-w-xl mx-auto" : "grid grid-cols-1 lg:grid-cols-2 gap-8"}>
           
           {/* Part 1: Party Information */}
           <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors duration-200">
@@ -168,110 +192,137 @@ const CreateParty = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Account Status</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, status: 'take' }))}
-                    className={`py-3.5 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
-                      formData.status === 'take' 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none' 
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-200 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    Take (Lena)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFormData(prev => ({ ...prev, status: 'give' }))}
-                    className={`py-3.5 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
-                      formData.status === 'give' 
-                      ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none' 
-                      : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-200 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-400'
-                    }`}
-                  >
-                    Give (Dena)
-                  </button>
+              {/* Mobile Number - specifically for LOFFERS DTF */}
+              {isLofferUser && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">
+                    Client Mobile Number
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      className="w-full pl-12 pr-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-2 focus:ring-blue-600/10 focus:border-blue-600 outline-none transition-all font-medium"
+                      placeholder="Enter client mobile number"
+                    />
+                    <div className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <Phone className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Account Status: Hidden for LOFFERS DTF user */}
+              {!isLofferUser && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Account Status</label>
+                  <div className="grid grid-cols-2 gap-4">
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, status: 'take' }))}
+                      className={`py-3.5 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
+                        formData.status === 'take' 
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none' 
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-200 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-400'
+                      }`}
+                    >
+                      Take (Lena)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, status: 'give' }))}
+                      className={`py-3.5 rounded-2xl font-bold border-2 transition-all flex items-center justify-center gap-2 ${
+                        formData.status === 'give' 
+                        ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 dark:shadow-none' 
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-blue-200 dark:hover:border-blue-700 hover:text-blue-600 dark:hover:text-blue-400'
+                      }`}
+                    >
+                      Give (Dena)
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Part 2: Incentive / Commission */}
-          <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors duration-200">
-            <div className="flex items-center gap-2 pb-4 border-b border-slate-100 dark:border-slate-800">
-              <Percent className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">Incentive Settings</h2>
-            </div>
-
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Commission Option</label>
-                <select
-                  name="commissionType"
-                  value={formData.commissionType}
-                  onChange={handleChange}
-                  className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-2 focus:ring-blue-600/10 focus:border-blue-600 outline-none transition-all font-medium appearance-none"
-                >
-                  <option value="with">With Commission</option>
-                  <option value="without">No Commission</option>
-                </select>
+          {/* Part 2: Incentive / Commission (Hidden completely for LOFFERS DTF) */}
+          {!isLofferUser && (
+            <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6 transition-colors duration-200">
+              <div className="flex items-center gap-2 pb-4 border-b border-slate-100 dark:border-slate-800">
+                <Percent className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">Incentive Settings</h2>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Commission Rate (%)</label>
-                <div className="relative">
-                  <input
-                    name="commissionRate"
-                    type="number"
-                    step="0.01"
-                    disabled={formData.commissionType === 'without'}
-                    value={formData.commissionRate}
+              <div className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Commission Option</label>
+                  <select
+                    name="commissionType"
+                    value={formData.commissionType}
                     onChange={handleChange}
-                    className={`w-full px-5 py-3.5 border rounded-2xl focus:ring-2 outline-none transition-all font-bold text-xl ${
-                      formData.commissionType === 'without' 
-                      ? 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600' 
-                      : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 focus:ring-blue-600/10 focus:border-blue-600'
-                    }`}
-                  />
-                  <div className="absolute right-5 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</div>
+                    className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-2 focus:ring-blue-600/10 focus:border-blue-600 outline-none transition-all font-medium appearance-none"
+                  >
+                    <option value="with">With Commission</option>
+                    <option value="without">No Commission</option>
+                  </select>
                 </div>
-                <p className="text-xs text-slate-500 dark:text-slate-500 italic ml-1">
-                  * Auto-calculated: 3% for Take, 1% for Give
-                </p>
-              </div>
 
-              <div className="bg-blue-50/50 dark:bg-blue-950/20 p-6 rounded-2xl border border-blue-100/50 dark:border-blue-900/30 flex gap-4">
-                <Activity className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
-                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                  Based on current settings, this party will be registered with a <strong>{formData.commissionRate}%</strong> commission rate for <strong>{formData.status.toUpperCase()}</strong> status.
-                </p>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider ml-1">Commission Rate (%)</label>
+                  <div className="relative">
+                    <input
+                      name="commissionRate"
+                      type="number"
+                      step="0.01"
+                      disabled={formData.commissionType === 'without'}
+                      value={formData.commissionRate}
+                      onChange={handleChange}
+                      className={`w-full px-5 py-3.5 border rounded-2xl focus:ring-2 outline-none transition-all font-bold text-xl ${
+                        formData.commissionType === 'without' 
+                        ? 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-400 dark:text-slate-600' 
+                        : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-blue-600 dark:text-blue-400 focus:ring-blue-600/10 focus:border-blue-600'
+                      }`}
+                    />
+                    <div className="absolute right-5 top-1/2 -translate-y-1/2 font-bold text-slate-400">%</div>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-500 italic ml-1">
+                    * Auto-calculated: 3% for Take, 1% for Give
+                  </p>
+                </div>
+
+                <div className="bg-blue-50/50 dark:bg-blue-950/20 p-6 rounded-2xl border border-blue-100/50 dark:border-blue-900/30 flex gap-4">
+                  <Activity className="w-6 h-6 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+                  <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Based on current settings, this party will be registered with a <strong>{formData.commissionRate}%</strong> commission rate for <strong>{formData.status.toUpperCase()}</strong> status.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Feedback Messages */}
         {error && (
-          <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center gap-3 animate-shake">
+          <div className={`p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-400 rounded-2xl flex items-center gap-3 animate-shake ${isLofferUser ? 'max-w-2xl mx-auto' : ''}`}>
             <AlertCircle className="w-5 h-5" />
             <p className="font-medium text-sm">{error}</p>
           </div>
         )}
         {success && (
-          <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-100 dark:border-green-900/30 text-green-600 dark:text-green-400 rounded-2xl flex items-center gap-3 animate-in fade-in">
+          <div className={`p-4 bg-green-50 dark:bg-green-950/20 border border-green-100 dark:border-green-900/30 text-green-600 dark:text-green-400 rounded-2xl flex items-center gap-3 animate-in fade-in ${isLofferUser ? 'max-w-2xl mx-auto' : ''}`}>
             <ShieldCheck className="w-5 h-5" />
             <p className="font-medium text-sm">Party created successfully!</p>
           </div>
         )}
 
         {/* Submit Button */}
-        <div className="flex justify-end pt-4">
+        <div className={`flex ${isLofferUser ? 'justify-center max-w-xl mx-auto' : 'justify-end'} pt-4`}>
           <button
             type="submit"
             disabled={loading}
-            className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-xl shadow-blue-200 dark:shadow-none disabled:opacity-50 group"
+            className={`${isLofferUser ? 'w-full' : 'w-full sm:w-auto'} bg-blue-600 hover:bg-blue-700 text-white px-10 py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-xl shadow-blue-200 dark:shadow-none disabled:opacity-50 group`}
           >
             {loading ? (
               <Loader2 className="w-6 h-6 animate-spin" />

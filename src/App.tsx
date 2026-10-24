@@ -42,6 +42,7 @@ const BalanceSheet = lazyRetry(() => import('./pages/BalanceSheet'));
 const ProfitLossReport = lazyRetry(() => import('./pages/ProfitLossReport'));
 const TransactionReport = lazyRetry(() => import('./pages/TransactionReport'));
 const TransferEntry = lazyRetry(() => import('./pages/TransferEntry'));
+const BackupPage = lazyRetry(() => import('./pages/BackupPage'));
 const AdminLogin = lazyRetry(() => import('./pages/AdminLogin'));
 const AdminDashboard = lazyRetry(() => import('./pages/AdminDashboard'));
 
@@ -114,6 +115,22 @@ const AppContent = () => {
               element={
                 <ProtectedRoute>
                   <CompanySettings />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/configure/backup" 
+              element={
+                <ProtectedRoute>
+                  <BackupPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/configure/online-backup" 
+              element={
+                <ProtectedRoute>
+                  <BackupPage />
                 </ProtectedRoute>
               } 
             />

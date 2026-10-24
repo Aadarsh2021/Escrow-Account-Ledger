@@ -44,7 +44,12 @@ interface PartyOption {
 }
 
 const TransactionReport = () => {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
+
+  const isLofferUser = 
+    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
+    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
+    profile?.company_name?.toLowerCase() === 'loffers dtf';
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -118,11 +123,14 @@ const TransactionReport = () => {
     try {
       const { data, error } = await supabase
         .from('parties')
-        .select('id, party_name, sr_no')
+        .select('id, party_name, sr_no, system_type')
         .eq('user_id', user.id)
         .order('party_name', { ascending: true });
       if (error) throw error;
-      setParties(data || []);
+      const cleanData = isLofferUser
+        ? (data || []).filter((p: any) => p.system_type === 'normal')
+        : (data || []);
+      setParties(cleanData);
     } catch (err) {
       console.error('Error fetching parties dropdown:', err);
     }

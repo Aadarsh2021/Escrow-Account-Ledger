@@ -14,6 +14,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../contexts/AuthContext';
 import { GlobalLoader } from '../components/ui/GlobalLoader';
 
 interface Party {
@@ -32,6 +33,14 @@ const ITEMS_PER_PAGE = 10;
 
 const PartyReport = () => {
   const navigate = useNavigate();
+  const { user, profile } = useAuth();
+  
+  // Check if current user is LOFFERS DTF
+  const isLofferUser = 
+    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
+    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
+    profile?.company_name?.toLowerCase() === 'loffers dtf';
+
   const [parties, setParties] = useState<Party[]>(() => {
     try {
       const cached = localStorage.getItem('cached_parties_report');
@@ -295,7 +304,12 @@ const PartyReport = () => {
     }
   };
 
-  const filteredParties = parties.filter(p => 
+  // For LOFFERS DTF, completely hide system-generated parties
+  const displayParties = isLofferUser 
+    ? parties.filter(p => p.system_type === 'normal') 
+    : parties;
+
+  const filteredParties = displayParties.filter(p => 
     p.party_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     p.sr_no.toLowerCase().includes(searchQuery.toLowerCase())
   );

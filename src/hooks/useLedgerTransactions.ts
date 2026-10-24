@@ -9,6 +9,7 @@ export interface Party {
   commission_rate: number;
   monday_final: boolean;
   system_type: 'normal' | 'commission' | 'company';
+  phone?: string | null;
 }
 
 export interface Transaction {
@@ -70,6 +71,7 @@ export const useLedgerTransactions = ({
   const [selectedTnsIds, setSelectedTnsIds] = useState<Set<string>>(new Set());
   const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
 
   // DC Report Modal States
   const [isDcModalOpen, setIsDcModalOpen] = useState(false);
@@ -107,7 +109,10 @@ export const useLedgerTransactions = ({
     return data?.[0]?.balance || 0;
   };
 
-  const fetchTransactions = async (partyId: string, showArchived: boolean = false) => {
+  const fetchTransactions = async (partyId: string, showArchived: boolean = false, isSilent: boolean = false) => {
+    if (!isSilent) {
+      setLoadingTransactions(true);
+    }
     try {
       let currentTns: Transaction[] = [];
       let page = 0;
@@ -152,14 +157,22 @@ export const useLedgerTransactions = ({
         const partnerTypeMap = new Map<string, string>();
         const chunkSize = 200;
 
+        const chunks: string[][] = [];
         for (let i = 0; i < uniqueLinkedIds.length; i += chunkSize) {
-          const chunk = uniqueLinkedIds.slice(i, i + chunkSize);
-          const { data: partnerData } = await supabase
-            .from('transactions')
-            .select('linked_transaction_id, party_id, parties(party_name, system_type)')
-            .in('linked_transaction_id', chunk)
-            .neq('party_id', partyId);
+          chunks.push(uniqueLinkedIds.slice(i, i + chunkSize));
+        }
 
+        const partnerResults = await Promise.all(
+          chunks.map(chunk =>
+            supabase
+              .from('transactions')
+              .select('linked_transaction_id, party_id, parties(party_name, system_type)')
+              .in('linked_transaction_id', chunk)
+              .neq('party_id', partyId)
+          )
+        );
+
+        partnerResults.forEach(({ data: partnerData }) => {
           if (partnerData) {
             partnerData.forEach((p: any) => {
               const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
@@ -176,7 +189,7 @@ export const useLedgerTransactions = ({
               }
             });
           }
-        }
+        });
 
         currentTns.forEach(t => {
           if (t.linked_transaction_id) {
@@ -201,11 +214,13 @@ export const useLedgerTransactions = ({
       }
 
       setTransactions(currentTns);
-      if (!showArchived) {
-        setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
-      }
+      setClosingBalance(currentTns.length > 0 ? currentTns[currentTns.length - 1].balance : 0);
     } catch (err) {
       console.error('Error fetching transactions:', err);
+    } finally {
+      if (!isSilent) {
+        setLoadingTransactions(false);
+      }
     }
   };
 
@@ -246,14 +261,22 @@ export const useLedgerTransactions = ({
         const partnerTypeMap = new Map<string, string>();
         const chunkSize = 200;
 
+        const chunks: string[][] = [];
         for (let i = 0; i < uniqueLinkedIds.length; i += chunkSize) {
-          const chunk = uniqueLinkedIds.slice(i, i + chunkSize);
-          const { data: partnerData } = await supabase
-            .from('transactions')
-            .select('linked_transaction_id, party_id, parties(party_name, system_type)')
-            .in('linked_transaction_id', chunk)
-            .neq('party_id', partyId);
+          chunks.push(uniqueLinkedIds.slice(i, i + chunkSize));
+        }
 
+        const partnerResults = await Promise.all(
+          chunks.map(chunk =>
+            supabase
+              .from('transactions')
+              .select('linked_transaction_id, party_id, parties(party_name, system_type)')
+              .in('linked_transaction_id', chunk)
+              .neq('party_id', partyId)
+          )
+        );
+
+        partnerResults.forEach(({ data: partnerData }) => {
           if (partnerData) {
             partnerData.forEach((p: any) => {
               const rawParties = Array.isArray(p.parties) ? p.parties[0] : p.parties;
@@ -270,7 +293,7 @@ export const useLedgerTransactions = ({
               }
             });
           }
-        }
+        });
 
         currentTns.forEach(t => {
           if (t.linked_transaction_id) {
@@ -916,6 +939,7 @@ export const useLedgerTransactions = ({
   return {
     transactions,
     setTransactions,
+    loadingTransactions,
     printTransactions,
     setPrintTransactions,
     closingBalance,
