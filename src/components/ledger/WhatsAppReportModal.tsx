@@ -10,60 +10,51 @@ import {
   Loader2, 
   FileText, 
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Share2,
+  Image as ImageIcon
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import type { Party, Transaction } from '../../hooks/useLedgerTransactions';
 import { supabase, serviceSupabase } from '../../lib/supabase';
 
-const TINYURL_TOKEN = import.meta.env.VITE_TINYURL_API_TOKEN || '';
-
 async function shortenUrl(longUrl?: string | null): Promise<string> {
   if (!longUrl || typeof longUrl !== 'string' || longUrl.length < 35) return longUrl || '';
   
-  // 1. Try TinyURL Official API v2 with API token
+  // 1. is.gd (Full browser CORS support, instant short link)
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 3000);
-    const res = await fetch('https://api.tinyurl.com/create', {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Authorization': `Bearer ${TINYURL_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        url: longUrl,
-        domain: 'tinyurl.com'
-      })
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const json = await res.json();
-      if (json?.data?.tiny_url) {
-        return json.data.tiny_url;
-      }
-    }
-  } catch (err) {
-    console.warn('TinyURL v2 API failed, falling back to legacy endpoint:', err);
-  }
-
-  // 2. Fallback to public endpoint
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`, {
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`, {
       signal: controller.signal
     });
     clearTimeout(timeoutId);
     if (res.ok) {
-      const text = await res.text();
-      if (text && text.trim().startsWith('http')) {
-        return text.trim();
+      const json = await res.json();
+      if (json?.shorturl) {
+        return json.shorturl;
       }
     }
   } catch (err) {
-    console.warn('TinyURL fallback failed, using direct URL:', err);
+    console.warn('is.gd failed, trying v.gd:', err);
+  }
+
+  // 2. v.gd fallback (Full browser CORS support)
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.shorturl) {
+        return json.shorturl;
+      }
+    }
+  } catch (err) {
+    console.warn('v.gd fallback failed:', err);
   }
 
   return longUrl;
@@ -93,12 +84,29 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
   const [phoneSaved, setPhoneSaved] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
+  const [copyNotice, setCopyNotice] = useState(false);
   const [imageBlob, setImageBlob] = useState<Blob | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [billPublicUrl, setBillPublicUrl] = useState<string>('');
   const [uploadingCloud, setUploadingCloud] = useState<boolean>(false);
+  const [includeBillLink, setIncludeBillLink] = useState<boolean>(false);
+  const [canDirectShare, setCanDirectShare] = useState<boolean>(false);
 
   const reportCardRef = useRef<HTMLDivElement>(null);
+
+  // Check if device supports direct file sharing (Mobile phones / tablets)
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+      try {
+        const dummyFile = new File(['1'], 'test.png', { type: 'image/png' });
+        if (typeof navigator.canShare === 'function' && navigator.canShare({ files: [dummyFile] })) {
+          setCanDirectShare(true);
+        }
+      } catch {
+        setCanDirectShare(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (party) {
@@ -201,7 +209,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
     `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
     `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-    (billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : (uploadingCloud ? `⏳ [Generating Short Bill Link...]\n\n` : '')) +
+    (includeBillLink ? (billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : (uploadingCloud ? `⏳ [Generating Short Bill Link...]\n\n` : '')) : '') +
     `Thank you for your business! 🙏\n` +
     `- *${companyName}*`;
 
@@ -254,7 +262,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     document.body.removeChild(a);
   };
 
-  // Send / Open on WhatsApp (Zero Ctrl+V)
+  // Send / Open on WhatsApp (Direct Image Attachment on Mobile, Auto-Copy on Desktop)
   const handleSendWhatsApp = async () => {
     const targetPhone = cleanPhone(phoneNumber);
     if (!targetPhone) {
@@ -264,8 +272,8 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
 
     let finalBillUrl = billPublicUrl;
 
-    // If bill isn't uploaded yet, upload now
-    if (!finalBillUrl && imageBlob) {
+    // Only upload to cloud storage if user requested a link
+    if (includeBillLink && !finalBillUrl && imageBlob) {
       setUploadingCloud(true);
       try {
         const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
@@ -302,9 +310,38 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
       `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
       `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
       `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-      (finalBillUrl ? `🔗 *View / Download Bill:*\n${finalBillUrl}\n\n` : '') +
+      (includeBillLink && finalBillUrl ? `🔗 *View / Download Bill:*\n${finalBillUrl}\n\n` : '') +
       `Thank you for your business! 🙏\n` +
       `- *${companyName}*`;
+
+    // 1. Mobile Direct Image Share: Uses Native Web Share API to attach image directly to WhatsApp
+    if (canDirectShare && imageBlob) {
+      try {
+        const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const file = new File([imageBlob], `${companyName.replace(/\s+/g, '_')}_${cleanParty}_Statement.png`, { type: 'image/png' });
+        await navigator.share({
+          title: `${companyName} - ${party.party_name} Statement`,
+          text: finalMsg,
+          files: [file]
+        });
+        return;
+      } catch (shareErr: any) {
+        if (shareErr.name === 'AbortError') return;
+        console.warn('Native share failed, falling back to WhatsApp link:', shareErr);
+      }
+    }
+
+    // 2. Desktop Fallback: Copy Image to Clipboard so user can directly paste (Ctrl+V) in WhatsApp Web
+    if (imageBlob) {
+      try {
+        const item = new ClipboardItem({ 'image/png': imageBlob });
+        await navigator.clipboard.write([item]);
+        setCopyNotice(true);
+        setTimeout(() => setCopyNotice(false), 6000);
+      } catch (clipErr) {
+        console.warn('Clipboard write skipped:', clipErr);
+      }
+    }
 
     const encodedText = encodeURIComponent(finalMsg);
     const waUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodedText}`;
@@ -462,6 +499,42 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             </div>
           </div>
 
+          {/* Copy Notice Banner */}
+          {copyNotice && (
+            <div className="bg-emerald-600 text-white p-3.5 rounded-2xl text-xs font-bold flex items-center justify-between shadow-lg shadow-emerald-600/20 animate-in slide-in-from-top-2">
+              <div className="flex items-center gap-2">
+                <Check className="w-4 h-4 shrink-0" />
+                <span>📸 Bill Image copied to clipboard! In WhatsApp Web, simply press <b>Ctrl + V</b> to send the image directly.</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => setCopyNotice(false)} 
+                className="text-white/80 hover:text-white ml-2 text-sm font-black"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Options: Direct Image vs Short Link */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                Direct Bill Image: {canDirectShare ? 'Auto-attached via WhatsApp' : 'Auto-copied for 1-click Ctrl+V'}
+              </span>
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-medium text-slate-600 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={includeBillLink}
+                onChange={(e) => setIncludeBillLink(e.target.checked)}
+                className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 border-slate-300"
+              />
+              <span>Include view/download link in message</span>
+            </label>
+          </div>
+
           {/* WhatsApp Text Template Preview */}
           <div className="space-y-2">
             <span className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -476,7 +549,9 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
           <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-900/30 flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
             <span className="text-base">🚀</span>
             <p className="leading-relaxed">
-              <strong>Direct WhatsApp Share:</strong> Clicking "Send on WhatsApp" opens WhatsApp with the short bill link and statement summary pre-filled. Simply press <strong>Send</strong> in WhatsApp!
+              <strong>Direct WhatsApp Share:</strong> {canDirectShare 
+                ? 'Clicking below will open WhatsApp directly with the Statement PNG image attached.'
+                : 'Clicking below will copy the Statement Image to your clipboard and open the client chat. Simply press Ctrl+V to paste and send the image directly!'}
             </p>
           </div>
         </div>
@@ -497,8 +572,14 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             disabled={!phoneNumber.trim() || uploadingCloud}
             className="w-full sm:w-auto px-8 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
           >
-            {uploadingCloud ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-            {uploadingCloud ? 'Uploading Bill...' : 'Send on WhatsApp'}
+            {uploadingCloud ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : canDirectShare ? (
+              <Share2 className="w-4 h-4" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+            {uploadingCloud ? 'Preparing...' : canDirectShare ? 'Send Image on WhatsApp' : 'Open WhatsApp & Send Image'}
             <ExternalLink className="w-3.5 h-3.5 opacity-70" />
           </button>
         </div>
