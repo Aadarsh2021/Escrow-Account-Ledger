@@ -128,14 +128,40 @@ export class BackupRestoreService {
       }));
 
     if (transactionsToUpsert.length > 0) {
-      // Chunk insert/upsert in batches of 100
-      const BATCH_SIZE = 100;
-      for (let i = 0; i < transactionsToUpsert.length; i += BATCH_SIZE) {
-        const batch = transactionsToUpsert.slice(i, i + BATCH_SIZE);
-        const { error: tErr } = await client
+      // Check which transactions already exist in DB and are finalized
+      const txIds = transactionsToUpsert.map(t => t.id);
+      const finalizedIds = new Set<string>();
+
+      try {
+        const { data: existingRows } = await client
           .from('transactions')
-          .upsert(batch, { onConflict: 'id' });
-        if (tErr) throw new Error('Failed to restore transactions batch: ' + tErr.message);
+          .select('id, is_finalized')
+          .in('id', txIds);
+
+        if (existingRows) {
+          for (const row of existingRows) {
+            if (row.is_finalized) {
+              finalizedIds.add(row.id);
+            }
+          }
+        }
+      } catch (checkErr) {
+        console.warn('Could not check existing finalized transactions:', checkErr);
+      }
+
+      // Exclude already-finalized transactions in the database (they are already safely preserved & locked)
+      const transactionsToRestore = transactionsToUpsert.filter(t => !finalizedIds.has(t.id));
+
+      if (transactionsToRestore.length > 0) {
+        // Chunk insert/upsert in batches of 100
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < transactionsToRestore.length; i += BATCH_SIZE) {
+          const batch = transactionsToRestore.slice(i, i + BATCH_SIZE);
+          const { error: tErr } = await client
+            .from('transactions')
+            .upsert(batch, { onConflict: 'id' });
+          if (tErr) throw new Error('Failed to restore transactions batch: ' + tErr.message);
+        }
       }
     }
 
