@@ -53,7 +53,7 @@ class GoogleDriveService {
   }
 
   isAuthenticated(): boolean {
-    return !!this.accessToken;
+    return !!(this.accessToken || this.refreshToken);
   }
 
   getRefreshToken(): string | null {
@@ -72,6 +72,105 @@ class GoogleDriveService {
     localStorage.removeItem('google_drive_refresh_token');
     localStorage.removeItem('google_drive_folder_id');
     localStorage.removeItem('google_drive_user_email');
+  }
+
+  // Refresh access token using refresh_token or GIS silent request
+  async refreshAccessToken(): Promise<boolean> {
+    if (this.refreshToken) {
+      try {
+        const res = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: CLIENT_ID,
+            client_secret: CLIENT_SECRET,
+            refresh_token: this.refreshToken,
+            grant_type: 'refresh_token'
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.access_token) {
+            this.accessToken = data.access_token;
+            localStorage.setItem('google_drive_token', data.access_token);
+            if (data.refresh_token) {
+              this.refreshToken = data.refresh_token;
+              localStorage.setItem('google_drive_refresh_token', data.refresh_token);
+            }
+            return true;
+          }
+        } else {
+          const errText = await res.text();
+          console.warn('Google token refresh failed:', errText);
+        }
+      } catch (err) {
+        console.error('Error refreshing Google Drive token:', err);
+      }
+    }
+
+    // Fallback: If in browser and GIS is loaded, attempt silent prompt
+    if (typeof window !== 'undefined') {
+      await ensureGsiLoaded();
+      if ((window as any).google?.accounts?.oauth2) {
+        try {
+          const token = await new Promise<string | null>((resolve) => {
+            const client = (window as any).google.accounts.oauth2.initTokenClient({
+              client_id: CLIENT_ID,
+              scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
+              callback: (res: any) => {
+                if (res?.access_token) resolve(res.access_token);
+                else resolve(null);
+              },
+              error_callback: () => resolve(null)
+            });
+            client.requestAccessToken({ prompt: '' });
+          });
+
+          if (token) {
+            this.accessToken = token;
+            localStorage.setItem('google_drive_token', token);
+            return true;
+          }
+        } catch (silentErr) {
+          console.warn('GIS silent refresh error:', silentErr);
+        }
+      }
+    }
+
+    return false;
+  }
+
+  // HTTP wrapper that injects Authorization header and auto-refreshes on 401
+  async fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
+    if (!this.accessToken && this.refreshToken) {
+      await this.refreshAccessToken();
+    }
+
+    if (!this.accessToken) {
+      throw new Error('Google Drive is not connected');
+    }
+
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', `Bearer ${this.accessToken}`);
+
+    let res = await fetch(url, { ...options, headers });
+
+    // Handle 401 Unauthorized by auto-refreshing token and retrying once
+    if (res.status === 401) {
+      console.warn('Google Drive API returned 401 Unauthorized. Refreshing token...');
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed && this.accessToken) {
+        const retryHeaders = new Headers(options.headers || {});
+        retryHeaders.set('Authorization', `Bearer ${this.accessToken}`);
+        res = await fetch(url, { ...options, headers: retryHeaders });
+      } else {
+        console.warn('Failed to refresh Google Drive token after 401. Disconnecting...');
+        this.disconnect();
+      }
+    }
+
+    return res;
   }
 
   // Authenticate user with Google Drive OAuth2
@@ -208,11 +307,9 @@ class GoogleDriveService {
 
   // Fetch email of the connected Google account
   private async fetchUserInfo(): Promise<string | null> {
-    if (!this.accessToken) return null;
+    if (!this.isAuthenticated()) return null;
     try {
-      const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${this.accessToken}` }
-      });
+      const res = await this.fetchWithAuth('https://www.googleapis.com/oauth2/v2/userinfo');
       if (res.ok) {
         const info = await res.json();
         if (info?.email) {
@@ -230,14 +327,12 @@ class GoogleDriveService {
 
   // Find or Create the designated backup folder in Google Drive
   async getOrCreateBackupFolder(): Promise<string> {
-    if (!this.accessToken) throw new Error('Google Drive is not connected');
+    if (!this.isAuthenticated()) throw new Error('Google Drive is not connected');
 
     // 1. If we have a cached folder ID, check if it's still valid
     if (this.folderId) {
       try {
-        const checkRes = await fetch(`https://www.googleapis.com/drive/v3/files/${this.folderId}?fields=id,name,trashed`, {
-          headers: { Authorization: `Bearer ${this.accessToken}` }
-        });
+        const checkRes = await this.fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${this.folderId}?fields=id,name,trashed`);
         if (checkRes.ok) {
           const data = await checkRes.json();
           if (!data.trashed && data.name === FOLDER_NAME) {
@@ -249,9 +344,7 @@ class GoogleDriveService {
 
     // 2. Search for existing folder by name
     const query = `name = '${FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-    const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name)&pageSize=1`, {
-      headers: { Authorization: `Bearer ${this.accessToken}` }
-    });
+    const searchRes = await this.fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name)&pageSize=1`);
 
     if (searchRes.ok) {
       const searchData = await searchRes.json();
@@ -264,10 +357,9 @@ class GoogleDriveService {
     }
 
     // 3. Folder does not exist: Create it!
-    const createRes = await fetch('https://www.googleapis.com/drive/v3/files', {
+    const createRes = await this.fetchWithAuth('https://www.googleapis.com/drive/v3/files', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${this.accessToken}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -303,11 +395,8 @@ class GoogleDriveService {
     form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
     form.append('file', fileBlob);
 
-    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime,size', {
+    const uploadRes = await this.fetchWithAuth('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,createdTime,size', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`
-      },
       body: form
     });
 
@@ -321,14 +410,12 @@ class GoogleDriveService {
 
   // List all backup files present in the Google Drive folder
   async listBackups(): Promise<GoogleDriveBackupFile[]> {
-    if (!this.accessToken) return [];
+    if (!this.isAuthenticated()) return [];
 
     try {
       const folderId = await this.getOrCreateBackupFolder();
       const query = `'${folderId}' in parents and trashed = false`;
-      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name, createdTime, size)&orderBy=createdTime desc&pageSize=30`, {
-        headers: { Authorization: `Bearer ${this.accessToken}` }
-      });
+      const res = await this.fetchWithAuth(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id, name, createdTime, size)&orderBy=createdTime desc&pageSize=30`);
 
       if (!res.ok) return [];
       const data = await res.json();
@@ -341,11 +428,9 @@ class GoogleDriveService {
 
   // Download and parse backup JSON from Google Drive
   async downloadBackupContent(fileId: string): Promise<any> {
-    if (!this.accessToken) throw new Error('Not connected to Google Drive');
+    if (!this.isAuthenticated()) throw new Error('Not connected to Google Drive');
 
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${this.accessToken}` }
-    });
+    const res = await this.fetchWithAuth(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
 
     if (!res.ok) {
       throw new Error('Failed to download backup file from Google Drive');

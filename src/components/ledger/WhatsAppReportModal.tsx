@@ -116,6 +116,15 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     }
   }, [party?.id, isOpen]);
 
+  // Clean up Object URL when imageUrl changes or on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (imageUrl) {
+        URL.revokeObjectURL(imageUrl);
+      }
+    };
+  }, [imageUrl]);
+
   // Generate screenshot of report card once modal is open and auto-upload to Supabase Storage
   useEffect(() => {
     if (!isOpen || !party) return;
