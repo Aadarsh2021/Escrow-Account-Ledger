@@ -316,6 +316,13 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
 
     // 1. Mobile Direct Image Share: Uses Native Web Share API to attach image directly to WhatsApp
     if (canDirectShare && imageBlob) {
+      // Auto-copy template text to clipboard so it is ready to paste into the WhatsApp caption box
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(finalMsg);
+        }
+      } catch {}
+
       try {
         const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
         const file = new File([imageBlob], `${companyName.replace(/\s+/g, '_')}_${cleanParty}_Statement.png`, { type: 'image/png' });
@@ -347,6 +354,47 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     const waUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodedText}`;
 
     // Universally open WhatsApp without popup blockers
+    try {
+      const link = document.createElement('a');
+      link.href = waUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        if (document.body.contains(link)) document.body.removeChild(link);
+      }, 100);
+    } catch {
+      window.open(waUrl, '_blank');
+    }
+  };
+
+  // Send Pure Text Statement directly to WhatsApp (Always pre-fills text, 100% reliable)
+  const handleSendTextOnly = () => {
+    const targetPhone = cleanPhone(phoneNumber);
+    if (!targetPhone) {
+      alert('Please enter a valid client mobile number.');
+      return;
+    }
+
+    if (phoneNumber.trim() && phoneNumber.trim() !== party.phone) {
+      handleSavePhone();
+    }
+
+    const finalMsg = `*${companyName} - Account Statement* 📄\n\n` +
+      `Dear *${party.party_name}*,\n` +
+      `Here is your transaction ledger statement as of ${formattedDate}:\n\n` +
+      `📊 *Total Entries:* ${transactions.length}\n` +
+      `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
+      `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
+      `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
+      (includeBillLink && billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : '') +
+      `Thank you for your business! 🙏\n` +
+      `- *${companyName}*`;
+
+    const encodedText = encodeURIComponent(finalMsg);
+    const waUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodedText}`;
+
     try {
       const link = document.createElement('a');
       link.href = waUrl;
@@ -549,9 +597,9 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
           <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-900/30 flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
             <span className="text-base">🚀</span>
             <p className="leading-relaxed">
-              <strong>Direct WhatsApp Share:</strong> {canDirectShare 
-                ? 'Clicking below will open WhatsApp directly with the Statement PNG image attached.'
-                : 'Clicking below will copy the Statement Image to your clipboard and open the client chat. Simply press Ctrl+V to paste and send the image directly!'}
+              <strong>WhatsApp Sending Options:</strong><br />
+              • <strong>Send Text Statement:</strong> Opens client chat with full template text pre-filled — simply tap Send!<br />
+              • <strong>Send Bill Photo:</strong> Shares the formal bill statement photo directly (text is also copied to clipboard if you want to paste as caption).
             </p>
           </div>
         </div>
@@ -561,27 +609,39 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-full sm:w-auto px-6 py-2.5 sm:py-3 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-sm transition-all"
+            className="w-full sm:w-auto px-5 py-2.5 sm:py-3 rounded-2xl text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-bold text-sm transition-all"
           >
             Close
           </button>
 
-          <button
-            type="button"
-            onClick={handleSendWhatsApp}
-            disabled={!phoneNumber.trim() || uploadingCloud}
-            className="w-full sm:w-auto px-8 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 transition-all shadow-xl shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
-          >
-            {uploadingCloud ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : canDirectShare ? (
-              <Share2 className="w-4 h-4" />
-            ) : (
-              <Send className="w-4 h-4" />
-            )}
-            {uploadingCloud ? 'Preparing...' : canDirectShare ? 'Send Image on WhatsApp' : 'Open WhatsApp & Send Image'}
-            <ExternalLink className="w-3.5 h-3.5 opacity-70" />
-          </button>
+          <div className="flex flex-col-reverse xs:flex-row items-center gap-2.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleSendTextOnly}
+              disabled={!phoneNumber.trim()}
+              className="w-full sm:w-auto px-5 py-3 sm:py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <FileText className="w-4 h-4 text-emerald-600" />
+              Send Text Statement
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSendWhatsApp}
+              disabled={!phoneNumber.trim() || uploadingCloud}
+              className="w-full sm:w-auto px-6 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xl shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
+            >
+              {uploadingCloud ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : canDirectShare ? (
+                <Share2 className="w-4 h-4" />
+              ) : (
+                <ImageIcon className="w-4 h-4" />
+              )}
+              {uploadingCloud ? 'Preparing...' : 'Send Bill Photo'}
+              <ExternalLink className="w-3.5 h-3.5 opacity-70" />
+            </button>
+          </div>
         </div>
       </div>
 
