@@ -17,6 +17,28 @@ const getRedirectUri = () => {
   return 'https://esrow-ledger.web.app/auth/google-drive-callback.html';
 };
 
+const ensureGsiLoaded = (): Promise<boolean> => {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  if ((window as any).google?.accounts?.oauth2) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(true));
+      setTimeout(() => resolve(!!(window as any).google?.accounts?.oauth2), 1500);
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.head.appendChild(script);
+    setTimeout(() => resolve(!!(window as any).google?.accounts?.oauth2), 2500);
+  });
+};
+
 class GoogleDriveService {
   private accessToken: string | null = null;
   private refreshToken: string | null = null;
@@ -54,13 +76,15 @@ class GoogleDriveService {
 
   // Authenticate user with Google Drive OAuth2
   async authenticate(): Promise<boolean> {
-    // 1. Try modern Google Identity Services (GIS) if available
+    // 1. Try modern Google Identity Services (GIS)
+    await ensureGsiLoaded();
+
     if ((window as any).google?.accounts?.oauth2) {
       try {
         const token = await new Promise<string | null>((resolve) => {
           const client = (window as any).google.accounts.oauth2.initTokenClient({
             client_id: CLIENT_ID,
-            scope: 'https://www.googleapis.com/auth/drive.file',
+            scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
             callback: (res: any) => {
               if (res?.access_token) {
                 resolve(res.access_token);
@@ -68,7 +92,10 @@ class GoogleDriveService {
                 resolve(null);
               }
             },
-            error_callback: () => resolve(null)
+            error_callback: (err: any) => {
+              console.warn('GIS error callback:', err);
+              resolve(null);
+            }
           });
           client.requestAccessToken({ prompt: 'consent' });
         });
