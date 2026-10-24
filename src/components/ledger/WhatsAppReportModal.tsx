@@ -187,11 +187,15 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
   const closingBalance = transactions.length > 0 ? (transactions[transactions.length - 1].balance || 0) : 0;
   const balanceType = closingBalance >= 0 ? 'CR' : 'DR';
 
-  // Build clean WhatsApp phone number
+  // Build clean WhatsApp phone number (E.164 without plus)
   const cleanPhone = (num: string) => {
-    const digits = num.replace(/\D/g, '');
+    if (!num) return '';
+    let digits = num.replace(/\D/g, '');
+    if (digits.startsWith('0')) {
+      digits = digits.replace(/^0+/, '');
+    }
     if (digits.length === 10) return `91${digits}`;
-    if (digits.length > 10 && !digits.startsWith('91') && digits.length === 12) return digits;
+    if (digits.length === 12 && digits.startsWith('91')) return digits;
     return digits;
   };
 
@@ -314,31 +318,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
       `Thank you for your business! 🙏\n` +
       `- *${companyName}*`;
 
-    // 1. Mobile Direct Image Share: Uses Native Web Share API to attach image directly to WhatsApp
-    if (canDirectShare && imageBlob) {
-      // Auto-copy template text to clipboard so it is ready to paste into the WhatsApp caption box
-      try {
-        if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(finalMsg);
-        }
-      } catch {}
-
-      try {
-        const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const file = new File([imageBlob], `${companyName.replace(/\s+/g, '_')}_${cleanParty}_Statement.png`, { type: 'image/png' });
-        await navigator.share({
-          title: `${companyName} - ${party.party_name} Statement`,
-          text: finalMsg,
-          files: [file]
-        });
-        return;
-      } catch (shareErr: any) {
-        if (shareErr.name === 'AbortError') return;
-        console.warn('Native share failed, falling back to WhatsApp link:', shareErr);
-      }
-    }
-
-    // 2. Desktop Fallback: Copy Image to Clipboard so user can directly paste (Ctrl+V) in WhatsApp Web
+    // Copy Image & Text to Clipboard for seamless 1-click paste (Ctrl+V)
     if (imageBlob) {
       try {
         const item = new ClipboardItem({ 'image/png': imageBlob });
@@ -351,6 +331,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     }
 
     const encodedText = encodeURIComponent(finalMsg);
+    // Directly target the client's phone number so user does NOT have to search manually!
     const waUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodedText}`;
 
     // Universally open WhatsApp without popup blockers
@@ -369,46 +350,23 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     }
   };
 
-  // Send Pure Text Statement directly to WhatsApp (Always pre-fills text, 100% reliable)
-  const handleSendTextOnly = () => {
-    const targetPhone = cleanPhone(phoneNumber);
-    if (!targetPhone) {
-      alert('Please enter a valid client mobile number.');
-      return;
-    }
-
-    if (phoneNumber.trim() && phoneNumber.trim() !== party.phone) {
-      handleSavePhone();
-    }
-
-    const finalMsg = `*${companyName} - Account Statement* 📄\n\n` +
-      `Dear *${party.party_name}*,\n` +
-      `Here is your transaction ledger statement as of ${formattedDate}:\n\n` +
-      `📊 *Total Entries:* ${transactions.length}\n` +
-      `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
-      `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
-      `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-      (includeBillLink && billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : '') +
-      `Thank you for your business! 🙏\n` +
-      `- *${companyName}*`;
-
-    const encodedText = encodeURIComponent(finalMsg);
-    const waUrl = `https://api.whatsapp.com/send?phone=${targetPhone}&text=${encodedText}`;
-
+  // Optional: Share Raw Image file via System Share Drawer
+  const handleNativeShareImage = async () => {
+    if (!imageBlob || !canDirectShare) return;
     try {
-      const link = document.createElement('a');
-      link.href = waUrl;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      document.body.appendChild(link);
-      link.click();
-      setTimeout(() => {
-        if (document.body.contains(link)) document.body.removeChild(link);
-      }, 100);
-    } catch {
-      window.open(waUrl, '_blank');
+      const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
+      const file = new File([imageBlob], `${companyName.replace(/\s+/g, '_')}_${cleanParty}_Statement.png`, { type: 'image/png' });
+      await navigator.share({
+        title: `${companyName} - ${party.party_name} Statement`,
+        files: [file]
+      });
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      console.warn('Native share failed:', err);
     }
   };
+
+
 
   if (typeof document === 'undefined') return null;
 
@@ -597,9 +555,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
           <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-900/30 flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
             <span className="text-base">🚀</span>
             <p className="leading-relaxed">
-              <strong>WhatsApp Sending Options:</strong><br />
-              • <strong>Send Text Statement:</strong> Opens client chat with full template text pre-filled — simply tap Send!<br />
-              • <strong>Send Bill Photo:</strong> Shares the formal bill statement photo directly (text is also copied to clipboard if you want to paste as caption).
+              <strong>Direct WhatsApp Chat:</strong> Clicking <strong>"Send on WhatsApp"</strong> opens <strong>{party.party_name} ({phoneNumber || 'Client'})</strong>'s chat directly with zero searching! Bill image is also auto-copied to clipboard for quick paste (Ctrl+V).
             </p>
           </div>
         </div>
@@ -615,30 +571,31 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
           </button>
 
           <div className="flex flex-col-reverse xs:flex-row items-center gap-2.5 w-full sm:w-auto">
-            <button
-              type="button"
-              onClick={handleSendTextOnly}
-              disabled={!phoneNumber.trim()}
-              className="w-full sm:w-auto px-5 py-3 sm:py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
-            >
-              <FileText className="w-4 h-4 text-emerald-600" />
-              Send Text Statement
-            </button>
+            {canDirectShare && (
+              <button
+                type="button"
+                onClick={handleNativeShareImage}
+                disabled={!imageBlob}
+                className="w-full sm:w-auto px-4 py-3 sm:py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                title="Share Image file to other apps"
+              >
+                <Share2 className="w-4 h-4 text-blue-500" />
+                Share File
+              </button>
+            )}
 
             <button
               type="button"
               onClick={handleSendWhatsApp}
               disabled={!phoneNumber.trim() || uploadingCloud}
-              className="w-full sm:w-auto px-6 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xl shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
+              className="w-full sm:w-auto px-7 py-3 sm:py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-xl shadow-emerald-600/25 active:scale-95 disabled:opacity-50"
             >
               {uploadingCloud ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
-              ) : canDirectShare ? (
-                <Share2 className="w-4 h-4" />
               ) : (
-                <ImageIcon className="w-4 h-4" />
+                <Send className="w-4 h-4" />
               )}
-              {uploadingCloud ? 'Preparing...' : 'Send Bill Photo'}
+              {uploadingCloud ? 'Preparing...' : 'Send on WhatsApp'}
               <ExternalLink className="w-3.5 h-3.5 opacity-70" />
             </button>
           </div>
