@@ -51,6 +51,15 @@ const PartyReport = () => {
     }
   });
 
+  // Sync parties state to localStorage cache whenever it changes
+  useEffect(() => {
+    try {
+      localStorage.setItem('cached_parties_report', JSON.stringify(parties));
+    } catch (e) {
+      console.error('Error caching parties report:', e);
+    }
+  }, [parties]);
+
   const [loading, setLoading] = useState(() => {
     try {
       const cached = localStorage.getItem('cached_parties_report');
@@ -256,15 +265,7 @@ const PartyReport = () => {
 
       if (error) throw error;
 
-      setParties(prev => {
-        const updatedList = prev.filter(p => p.id !== deleteConfirmParty.id);
-        try {
-          localStorage.setItem('cached_parties_report', JSON.stringify(updatedList));
-        } catch (e) {
-          console.error('Error caching parties report:', e);
-        }
-        return updatedList;
-      });
+      setParties(prev => prev.filter(p => p.id !== deleteConfirmParty.id));
       setSelectedPartyIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(deleteConfirmParty.id);
