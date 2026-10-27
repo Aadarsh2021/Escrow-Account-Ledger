@@ -256,18 +256,20 @@ const PartyReport = () => {
 
       if (error) throw error;
 
-      setParties(prev => prev.filter(p => p.id !== deleteConfirmParty.id));
+      setParties(prev => {
+        const updatedList = prev.filter(p => p.id !== deleteConfirmParty.id);
+        try {
+          localStorage.setItem('cached_parties_report', JSON.stringify(updatedList));
+        } catch (e) {
+          console.error('Error caching parties report:', e);
+        }
+        return updatedList;
+      });
       setSelectedPartyIds(prev => {
         const newSet = new Set(prev);
         newSet.delete(deleteConfirmParty.id);
         return newSet;
       });
-
-      // Update cache
-      try {
-        const updatedList = parties.filter(p => p.id !== deleteConfirmParty.id);
-        localStorage.setItem('cached_parties_report', JSON.stringify(updatedList));
-      } catch {}
 
       setDeleteConfirmParty(null);
     } catch (err) {
