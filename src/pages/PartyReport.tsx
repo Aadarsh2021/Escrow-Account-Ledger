@@ -21,6 +21,7 @@ interface Party {
   id: string;
   party_name: string;
   sr_no: string;
+  phone?: string;
   status: 'take' | 'give';
   commission_type: 'with' | 'without';
   commission_rate: number;
@@ -71,6 +72,10 @@ const PartyReport = () => {
   const [editingParty, setEditingParty] = useState<Party | null>(null);
   const [editFormData, setEditFormData] = useState<Partial<Party>>({});
   const [saving, setSaving] = useState(false);
+
+  // Delete State
+  const [deleteConfirmParty, setDeleteConfirmParty] = useState<Party | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Checklist selection states
   const [selectedPartyIds, setSelectedPartyIds] = useState<Set<string>>(new Set());
@@ -236,6 +241,43 @@ const PartyReport = () => {
     setEditFormData({ ...party });
   };
 
+  const handleDelete = (party: Party) => {
+    setDeleteConfirmParty(party);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmParty) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase
+        .from('parties')
+        .delete()
+        .eq('id', deleteConfirmParty.id);
+
+      if (error) throw error;
+
+      setParties(prev => prev.filter(p => p.id !== deleteConfirmParty.id));
+      setSelectedPartyIds(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(deleteConfirmParty.id);
+        return newSet;
+      });
+
+      // Update cache
+      try {
+        const updatedList = parties.filter(p => p.id !== deleteConfirmParty.id);
+        localStorage.setItem('cached_parties_report', JSON.stringify(updatedList));
+      } catch {}
+
+      setDeleteConfirmParty(null);
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Error deleting party: ' + (err as any).message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editingParty || !editFormData.party_name) return;
     setSaving(true);
@@ -282,14 +324,23 @@ const PartyReport = () => {
         }
       }
 
+      const updatePayload: any = {
+        party_name: editFormData.party_name,
+      };
+
+      if (!isLofferUser) {
+        updatePayload.status = editFormData.status;
+        updatePayload.commission_rate = parseFloat(editFormData.commission_rate?.toString() || '0');
+        updatePayload.monday_final = editFormData.monday_final;
+      }
+
+      if (isLofferUser) {
+        updatePayload.phone = editFormData.phone || null;
+      }
+
       const { error } = await supabase
         .from('parties')
-        .update({
-          party_name: editFormData.party_name,
-          status: editFormData.status,
-          commission_rate: parseFloat(editFormData.commission_rate?.toString() || '0'),
-          monday_final: editFormData.monday_final
-        })
+        .update(updatePayload)
         .eq('id', editingParty.id);
 
       if (error) throw error;
@@ -477,7 +528,10 @@ const PartyReport = () => {
                           >
                             <Edit3 className="w-5 h-5" />
                           </button>
-                          <button className="p-2.5 text-rose-450 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-all">
+                          <button
+                            onClick={() => handleDelete(p)}
+                            className="p-2.5 text-rose-500 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-all"
+                          >
                             <Trash2 className="w-5 h-5" />
                           </button>
                         </>
@@ -521,56 +575,80 @@ const PartyReport = () => {
               </button>
             </div>
             <div className="p-8 space-y-6">
+              {/* Party Name - always visible */}
               <div className="space-y-2">
                 <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Party Name</label>
                 <input 
                   className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold"
-                  value={editFormData.party_name}
+                  value={editFormData.party_name || ''}
                   onChange={(e) => setEditFormData({ ...editFormData, party_name: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-6">
+
+              {/* Phone - only for LOFFERS DTF user */}
+              {isLofferUser && (
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Status</label>
-                  <select 
-                    className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold"
-                    value={editFormData.status}
-                    onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
-                  >
-                    <option value="take">Take</option>
-                    <option value="give">Give</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Comm. Rate (%)</label>
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Client Mobile Number</label>
                   <input 
-                    type="number"
+                    type="tel"
                     className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold"
-                    value={editFormData.commission_rate}
-                    onChange={(e) => setEditFormData({ ...editFormData, commission_rate: parseFloat(e.target.value) })}
+                    value={editFormData.phone || ''}
+                    placeholder="Enter client mobile number"
+                    onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
                   />
                 </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Monday Final Status</label>
-                <div className="flex gap-4">
-                  <button 
-                    type="button"
-                    onClick={() => setEditFormData({ ...editFormData, monday_final: true })}
-                    className={`flex-grow py-3 rounded-xl font-bold transition-all ${editFormData.monday_final ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400'}`}
-                  >
-                    Yes (Finalised)
-                  </button>
-                  <button 
-                    type="button"
-                    disabled={editingParty?.monday_final === true}
-                    onClick={() => setEditFormData({ ...editFormData, monday_final: false })}
-                    className={`flex-grow py-3 rounded-xl font-bold transition-all ${editingParty?.monday_final === true ? 'bg-slate-100 dark:bg-slate-950 text-slate-300 dark:text-slate-600 cursor-not-allowed' : (!editFormData.monday_final ? 'bg-orange-500 text-white' : 'bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400')}`}
-                  >
-                    No (Pending)
-                  </button>
+              )}
+
+              {/* Status & Commission Rate - hidden for LOFFERS DTF user */}
+              {!isLofferUser && (
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Status</label>
+                    <select 
+                      className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold"
+                      value={editFormData.status}
+                      onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as any })}
+                    >
+                      <option value="take">Take</option>
+                      <option value="give">Give</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Comm. Rate (%)</label>
+                    <input 
+                      type="number"
+                      className="w-full px-5 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white rounded-2xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold"
+                      value={editFormData.commission_rate}
+                      onChange={(e) => setEditFormData({ ...editFormData, commission_rate: parseFloat(e.target.value) })}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Monday Final - hidden for LOFFERS DTF user */}
+              {!isLofferUser && (
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Monday Final Status</label>
+                  <div className="flex gap-4">
+                    <button 
+                      type="button"
+                      onClick={() => setEditFormData({ ...editFormData, monday_final: true })}
+                      className={`flex-grow py-3 rounded-xl font-bold transition-all ${editFormData.monday_final ? 'bg-emerald-600 text-white' : 'bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400'}`}
+                    >
+                      Yes (Finalised)
+                    </button>
+                    <button 
+                      type="button"
+                      disabled={editingParty?.monday_final === true}
+                      onClick={() => setEditFormData({ ...editFormData, monday_final: false })}
+                      className={`flex-grow py-3 rounded-xl font-bold transition-all ${editingParty?.monday_final === true ? 'bg-slate-100 dark:bg-slate-950 text-slate-300 dark:text-slate-600 cursor-not-allowed' : (!editFormData.monday_final ? 'bg-orange-500 text-white' : 'bg-slate-100 dark:bg-slate-950 text-slate-500 dark:text-slate-400')}`}
+                    >
+                      No (Pending)
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="flex gap-4 pt-4">
                 <button 
                   onClick={() => setEditingParty(null)}
@@ -663,6 +741,57 @@ const PartyReport = () => {
                 >
                   {bulkSaving ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                   Apply Rate
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmParty && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { if (!deleting) setDeleteConfirmParty(null); }} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-8 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-rose-50/50 dark:bg-rose-950/10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-rose-100 dark:bg-rose-950/40 rounded-2xl flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                </div>
+                <h3 className="text-xl font-black text-slate-900 dark:text-white">Delete Party</h3>
+              </div>
+              <button
+                onClick={() => { if (!deleting) setDeleteConfirmParty(null); }}
+                disabled={deleting}
+                className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full text-slate-400 transition-all disabled:opacity-30"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/30 rounded-2xl p-5 text-center">
+                <p className="text-sm font-bold text-slate-500 dark:text-slate-400">You are about to permanently delete:</p>
+                <p className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-2">{deleteConfirmParty.party_name}</p>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-2">SR No: {deleteConfirmParty.sr_no}</p>
+              </div>
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400 text-center">
+                ⚠️ Yeh action undo nahi hoga. Party aur uske saare transactions delete ho jayenge.
+              </p>
+              <div className="flex gap-4">
+                <button
+                  onClick={() => setDeleteConfirmParty(null)}
+                  disabled={deleting}
+                  className="flex-grow py-4 bg-slate-100 dark:bg-slate-950 text-slate-600 dark:text-slate-400 rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-slate-800 transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  disabled={deleting}
+                  className="flex-grow py-4 bg-rose-600 text-white rounded-2xl font-black hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 dark:shadow-none flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {deleting ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
+                  {deleting ? 'Deleting...' : 'Haan, Delete Karo'}
                 </button>
               </div>
             </div>
