@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { checkIsRegularUser } from '../utils/userType';
 
 export interface Party {
   id: string;
@@ -354,9 +355,11 @@ export const useLedgerTransactions = ({
   const handleMondayFinal = async () => {
     if (!selectedParty || submitting) return;
     
+    const isLofferUser = checkIsRegularUser(authUser);
+
     setConfirmDialog({
       isOpen: true,
-      title: 'Monday Final Settlement',
+      title: isLofferUser ? 'Final Settlement' : 'Monday Final Settlement',
       message: `Are you sure you want to finalize ${selectedParty.party_name}'s account? This will settle all active entries into a single summary record and archive the history.`,
       type: 'success',
       onConfirm: async () => {
@@ -393,7 +396,7 @@ export const useLedgerTransactions = ({
             p_party_id: selectedParty.id,
             p_user_id: authUser?.id || null,
             p_closing_balance: closingBal,
-            p_remarks: 'MONDAY FINAL SETTLEMENT'
+            p_remarks: isLofferUser ? 'FINAL SETTLEMENT' : 'MONDAY FINAL SETTLEMENT'
           });
 
           if (rpcError) throw rpcError;
@@ -866,7 +869,7 @@ export const useLedgerTransactions = ({
     };
   };
 
-  const createTransactionEntry = async (amountVal: string, remarksVal: string, linkedPartyVal: Party) => {
+  const createTransactionEntry = async (amountVal: string, remarksVal: string, linkedPartyVal: Party, entryDateVal?: string) => {
     if (!selectedParty || !amountVal || parseFloat(amountVal) === 0 || !linkedPartyVal || !authUser) return false;
     setSubmitting(true);
     const parsedAmt = parseFloat(amountVal);
@@ -877,6 +880,17 @@ export const useLedgerTransactions = ({
       const secondPartyType = numAmt > 0 ? 'DR' : 'CR';
 
       const chainId = generateUUID();
+
+      // Format custom transaction date if provided
+      let finalTxnDate: string | undefined = undefined;
+      if (entryDateVal) {
+        const today = new Date();
+        const parts = entryDateVal.split('-').map(Number);
+        if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+          const customDate = new Date(parts[0], parts[1] - 1, parts[2], today.getHours(), today.getMinutes(), today.getSeconds(), today.getMilliseconds());
+          finalTxnDate = customDate.toISOString();
+        }
+      }
 
       // Get current balances
       const [balA, balB] = await Promise.all([
@@ -903,7 +917,8 @@ export const useLedgerTransactions = ({
           tns_type: firstPartyType,
           credit: creditA,
           debit: debitA,
-          balance: newBalA
+          balance: newBalA,
+          ...(finalTxnDate ? { transaction_date: finalTxnDate } : {})
         },
         {
           id: generateUUID(),
@@ -914,7 +929,8 @@ export const useLedgerTransactions = ({
           tns_type: secondPartyType,
           credit: creditB,
           debit: debitB,
-          balance: newBalB
+          balance: newBalB,
+          ...(finalTxnDate ? { transaction_date: finalTxnDate } : {})
         }
       ]);
 
@@ -924,6 +940,11 @@ export const useLedgerTransactions = ({
       await Promise.all([
         recalculateBalances(selectedParty.id),
         recalculateBalances(linkedPartyVal.id)
+      ]);
+
+      await Promise.all([
+        fetchTransactions(selectedParty.id, isOldRecordsView, true),
+        fetchAllTransactionsForPrint(selectedParty.id)
       ]);
       
       return true;

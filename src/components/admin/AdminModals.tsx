@@ -17,6 +17,7 @@ export interface AdminUser {
   client_count: number;
   invoice_count: number;
   last_invoice_created_at: string | null;
+  account_type?: 'regular' | 'ca' | string;
 }
 
 interface AdminModalsProps {
@@ -30,6 +31,8 @@ interface AdminModalsProps {
   setEditPlanType: (val: string) => void;
   editIsPaid: boolean;
   setEditIsPaid: (val: boolean) => void;
+  editAccountType: string;
+  setEditAccountType: (val: string) => void;
   handleUpdateUserPlan: () => Promise<void>;
   
   // Reset Password Modal
@@ -85,6 +88,8 @@ export const AdminModals = ({
   setEditPlanType,
   editIsPaid,
   setEditIsPaid,
+  editAccountType,
+  setEditAccountType,
   handleUpdateUserPlan,
   isResetOpen,
   setIsResetOpen,
@@ -277,6 +282,18 @@ export const AdminModals = ({
                     >
                       <option value="false">Unpaid / Inactive</option>
                       <option value="true">Paid / Active</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">Account Type (User Mode)</label>
+                    <select
+                      value={editAccountType}
+                      onChange={(e) => setEditAccountType(e.target.value)}
+                      className="w-full h-11 px-3 bg-white border border-slate-200 text-slate-800 text-xs font-bold rounded-xl focus:border-blue-600 focus:outline-none cursor-pointer"
+                    >
+                      <option value="ca">CA (Chartered Accountant / Full Commission Ledger)</option>
+                      <option value="regular">Regular (Single Transfer / Qty * Rate Ledger)</option>
                     </select>
                   </div>
                 </div>

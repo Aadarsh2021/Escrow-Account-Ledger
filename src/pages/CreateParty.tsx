@@ -18,16 +18,13 @@ import { useAuth } from '../contexts/AuthContext';
 
 const CreateParty = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { user, isRegularUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Check if current user is LOFFERS DTF
-  const isLofferUser = 
-    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
-    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
-    profile?.company_name?.toLowerCase() === 'loffers dtf';
+  // Check if current user is Regular account
+  const isLofferUser = isRegularUser;
 
   const [formData, setFormData] = useState({
     srNo: '',

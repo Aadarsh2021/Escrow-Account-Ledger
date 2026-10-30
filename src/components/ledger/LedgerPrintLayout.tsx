@@ -24,6 +24,7 @@ interface LedgerPrintLayoutProps {
   printStartDate: string;
   printEndDate: string;
   printOpeningBalance: number;
+  isLofferUser?: boolean;
 }
 
 export const LedgerPrintLayout = ({
@@ -35,7 +36,8 @@ export const LedgerPrintLayout = ({
   printFilterType,
   printStartDate,
   printEndDate,
-  printOpeningBalance
+  printOpeningBalance,
+  isLofferUser = false
 }: LedgerPrintLayoutProps) => {
   return (
     <div className="hidden print:block bg-white text-black p-0 h-auto">
@@ -197,10 +199,10 @@ export const LedgerPrintLayout = ({
                     </span>
                   ) : (
                     <span className="font-extrabold text-blue-700 text-[10px] tracking-wide">
-                      MONDAY FINAL SETTLEMENT
+                      {isLofferUser ? 'FINAL SETTLEMENT' : 'MONDAY FINAL SETTLEMENT'}
                     </span>
                   )}
-                  {t.remarks && t.remarks !== 'MONDAY FINAL SETTLEMENT' && (
+                  {t.remarks && !t.remarks.toUpperCase().includes('FINAL SETTLEMENT') && (
                     <span className={`ml-2 text-[9px] italic ${t.is_settlement ? 'text-blue-600 font-bold' : 'text-slate-450'}`}>
                       ({t.remarks})
                     </span>

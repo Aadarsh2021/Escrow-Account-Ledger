@@ -28,19 +28,17 @@ interface Party {
   monday_final: boolean;
   system_type: 'normal' | 'commission' | 'company';
   created_at: string;
+  balance?: number;
 }
 
 const ITEMS_PER_PAGE = 10;
 
 const PartyReport = () => {
   const navigate = useNavigate();
-  const { user, profile } = useAuth();
+  const { isRegularUser } = useAuth();
   
-  // Check if current user is LOFFERS DTF
-  const isLofferUser = 
-    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
-    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
-    profile?.company_name?.toLowerCase() === 'loffers dtf';
+  // Check if current user is Regular account
+  const isLofferUser = isRegularUser;
 
   const [parties, setParties] = useState<Party[]>(() => {
     try {
@@ -221,16 +219,44 @@ const PartyReport = () => {
       })
       .subscribe();
 
+    const tnsChannel = supabase.channel('party-report-tns-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, () => {
+        fetchParties();
+      })
+      .subscribe();
+
     return () => {
       supabase.removeChannel(partiesChannel);
+      supabase.removeChannel(tnsChannel);
     };
   }, []);
 
   const fetchParties = async () => {
     try {
-      const { data, error } = await supabase.from('parties').select('*').order('party_name', { ascending: true });
+      const { data, error } = await supabase
+        .from('parties')
+        .select(`
+          *,
+          transactions (
+            balance,
+            transaction_date,
+            created_at
+          )
+        `)
+        .order('party_name', { ascending: true })
+        .order('transaction_date', { foreignTable: 'transactions', ascending: false })
+        .order('created_at', { foreignTable: 'transactions', ascending: false })
+        .limit(1, { foreignTable: 'transactions' });
+
       if (error) throw error;
-      const cleanData = data || [];
+      const cleanData: Party[] = (data || []).map((p: any) => {
+        const tns = p.transactions as any[];
+        const bal = tns && tns.length > 0 ? tns[0].balance : 0;
+        return {
+          ...p,
+          balance: bal
+        };
+      });
       setParties(cleanData);
       try {
         localStorage.setItem('cached_parties_report', JSON.stringify(cleanData));
@@ -403,14 +429,16 @@ const PartyReport = () => {
         </div>
         
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <button
-            type="button"
-            onClick={() => setIsBulkCommModalOpen(true)}
-            className="flex items-center gap-1.5 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 dark:shadow-none rounded-2xl font-bold text-sm transition-all whitespace-nowrap"
-          >
-            <Edit3 className="w-4 h-4" />
-            Bulk Commission {selectedPartyIds.size > 0 ? `(${selectedPartyIds.size})` : ''}
-          </button>
+          {!isLofferUser && (
+            <button
+              type="button"
+              onClick={() => setIsBulkCommModalOpen(true)}
+              className="flex items-center gap-1.5 px-5 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-200 dark:shadow-none rounded-2xl font-bold text-sm transition-all whitespace-nowrap"
+            >
+              <Edit3 className="w-4 h-4" />
+              Bulk Commission {selectedPartyIds.size > 0 ? `(${selectedPartyIds.size})` : ''}
+            </button>
+          )}
           <div className="relative w-full md:w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 focus-within:ring-4 focus-within:ring-emerald-600/10 focus-within:border-emerald-600 rounded-2xl transition-all flex items-center">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-slate-500 z-10" />
             {firstReportMatch && (
@@ -452,52 +480,56 @@ const PartyReport = () => {
           <table className="w-full text-left">
             <thead className="bg-slate-50/50 dark:bg-slate-950/30 border-b border-slate-100 dark:border-slate-800">
               <tr className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                <th className="px-6 py-5 text-center w-12">
-                  <div 
-                    onClick={toggleSelectAllParties} 
-                    className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
-                      isAllFilteredNormalSelected 
-                        ? 'bg-emerald-600 border-emerald-600' 
-                        : isSomeFilteredNormalSelected 
-                          ? 'border-emerald-600' 
-                          : 'border-slate-300 dark:border-slate-700'
-                    }`}
-                  >
-                    {isAllFilteredNormalSelected && (
-                      <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>
-                    )}
-                    {isSomeFilteredNormalSelected && (
-                      <div className="w-1.5 h-1.5 bg-emerald-600 dark:bg-emerald-455 rounded-sm"></div>
-                    )}
-                  </div>
-                </th>
+                {!isLofferUser && (
+                  <th className="px-6 py-5 text-center w-12">
+                    <div 
+                      onClick={toggleSelectAllParties} 
+                      className={`w-4 h-4 rounded border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
+                        isAllFilteredNormalSelected 
+                          ? 'bg-emerald-600 border-emerald-600' 
+                          : isSomeFilteredNormalSelected 
+                            ? 'border-emerald-600' 
+                            : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    >
+                      {isAllFilteredNormalSelected && (
+                        <div className="w-1.5 h-1.5 bg-white rounded-sm"></div>
+                      )}
+                      {isSomeFilteredNormalSelected && (
+                        <div className="w-1.5 h-1.5 bg-emerald-600 dark:bg-emerald-455 rounded-sm"></div>
+                      )}
+                    </div>
+                  </th>
+                )}
                 <th className="px-6 py-5">SR NO</th>
                 <th className="px-8 py-5">Party Name</th>
                 <th className="px-8 py-5">Status</th>
                 <th className="px-8 py-5 text-center">Monday Final</th>
-                <th className="px-8 py-5 text-right">Commission Rate</th>
+                <th className="px-8 py-5 text-right">{isLofferUser ? 'Pending Amount' : 'Commission Rate'}</th>
                 <th className="px-8 py-5 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50 dark:divide-slate-800 font-medium">
               {paginatedParties.map((p) => (
                 <tr key={p.id} className={`hover:bg-slate-50/50 dark:hover:bg-slate-950/20 transition-colors ${selectedPartyIds.has(p.id) ? 'bg-emerald-50/40 dark:bg-emerald-950/10' : ''}`}>
-                  <td className="px-6 py-5 text-center">
-                    {p.system_type === 'normal' ? (
-                      <div 
-                        onClick={() => toggleSelectParty(p.id)} 
-                        className={`w-5 h-5 rounded-lg border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
-                          selectedPartyIds.has(p.id) 
-                            ? 'bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-100 dark:shadow-none' 
-                            : 'border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <div className={`w-2 h-2 bg-white rounded-sm transition-opacity ${selectedPartyIds.has(p.id) ? 'opacity-100' : 'opacity-0'}`}></div>
-                      </div>
-                    ) : (
-                      <div className="w-5 h-5 mx-auto" />
-                    )}
-                  </td>
+                  {!isLofferUser && (
+                    <td className="px-6 py-5 text-center">
+                      {p.system_type === 'normal' ? (
+                        <div 
+                          onClick={() => toggleSelectParty(p.id)} 
+                          className={`w-5 h-5 rounded-lg border-2 mx-auto cursor-pointer transition-all flex items-center justify-center ${
+                            selectedPartyIds.has(p.id) 
+                              ? 'bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-100 dark:shadow-none' 
+                              : 'border-slate-200 dark:border-slate-700'
+                          }`}
+                        >
+                          <div className={`w-2 h-2 bg-white rounded-sm transition-opacity ${selectedPartyIds.has(p.id) ? 'opacity-100' : 'opacity-0'}`}></div>
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 mx-auto" />
+                      )}
+                    </td>
+                  )}
                   <td className="px-6 py-5 font-bold text-slate-400 dark:text-slate-500">{p.sr_no}</td>
                   <td className="px-8 py-5">
                     <div className="font-bold text-slate-900 dark:text-white text-lg">{p.party_name}</div>
@@ -518,8 +550,16 @@ const PartyReport = () => {
                       {((p.monday_final as any) === true || (p.monday_final as any) === 'true') ? 'Yes' : 'No'}
                     </div>
                   </td>
-                  <td className="px-8 py-5 text-right font-black text-slate-600 dark:text-slate-300 text-lg">
-                    {p.system_type === 'normal' ? `${p.commission_rate}%` : '-'}
+                  <td className="px-8 py-5 text-right font-black text-lg">
+                    {isLofferUser ? (
+                      p.system_type === 'normal' ? (
+                        <span className={(p.balance || 0) >= 0 ? 'text-emerald-600 dark:text-emerald-455' : 'text-rose-600 dark:text-rose-455'}>
+                          ₹ {Math.round(Math.abs(p.balance || 0)).toLocaleString('en-IN')} {(p.balance || 0) >= 0 ? 'Cr' : 'Dr'}
+                        </span>
+                      ) : '-'
+                    ) : (
+                      p.system_type === 'normal' ? `${p.commission_rate}%` : '-'
+                    )}
                   </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex justify-end gap-2">
@@ -545,7 +585,7 @@ const PartyReport = () => {
               ))}
               {paginatedParties.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-8 py-20 text-center text-slate-400 dark:text-slate-500 italic">No parties found.</td>
+                  <td colSpan={isLofferUser ? 6 : 7} className="px-8 py-20 text-center text-slate-400 dark:text-slate-500 italic">No parties found.</td>
                 </tr>
               )}
             </tbody>

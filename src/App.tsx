@@ -7,6 +7,8 @@ import { AdminRoute } from './components/AdminRoute';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import { GlobalLoader } from './components/ui/GlobalLoader';
+import { Toaster } from 'react-hot-toast';
+import { AutoBackupManager } from './components/backup/AutoBackupManager';
 
 // Helper to handle lazy loading failures when new versions are deployed
 const lazyRetry = <T extends React.ComponentType<any>>(
@@ -45,6 +47,7 @@ const TransferEntry = lazyRetry(() => import('./pages/TransferEntry'));
 const BackupPage = lazyRetry(() => import('./pages/BackupPage'));
 const AdminLogin = lazyRetry(() => import('./pages/AdminLogin'));
 const AdminDashboard = lazyRetry(() => import('./pages/AdminDashboard'));
+const ViewStatement = lazyRetry(() => import('./pages/ViewStatement'));
 
 // Global Fallback Loader
 const PageLoader = () => <GlobalLoader fullScreen={false} />;
@@ -76,10 +79,13 @@ const AppContent = () => {
 
   const isLandingPage = location.pathname === '/';
   const isAdminPage = location.pathname.startsWith('/admin');
+  const isPublicStatementPage = location.pathname.startsWith('/view-statement');
 
   return (
     <div className="flex flex-col min-h-screen w-full bg-slate-50 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
-      {!isAdminPage && <Navbar />}
+      <Toaster position="top-right" toastOptions={{ duration: 4000 }} />
+      {user && !isAdminPage && !isPublicStatementPage && <AutoBackupManager />}
+      {!isAdminPage && !isPublicStatementPage && <Navbar />}
       
       <main className={`flex-grow w-full ${user ? 'pb-16 md:pb-0' : ''}`}>
         <Suspense fallback={<PageLoader />}>
@@ -205,6 +211,12 @@ const AppContent = () => {
                   <AdminDashboard />
                 </AdminRoute>
               } 
+            />
+
+            {/* Public Statement Bill Viewer (Accessible on all devices without login) */}
+            <Route 
+              path="/view-statement" 
+              element={<ViewStatement />} 
             />
 
             {/* Placeholder for missing pages */}

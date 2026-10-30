@@ -56,16 +56,21 @@ const formatTime = (dateStr?: string) => {
   }
 };
 
+const getTodayDateStr = () => {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const LedgerView = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user: authUser, profile } = useAuth();
+  const { user: authUser, profile, isRegularUser } = useAuth();
   
-  // Check if current user is LOFFERS DTF
-  const isLofferUser = 
-    authUser?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
-    authUser?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
-    profile?.company_name?.toLowerCase() === 'loffers dtf';
+  // Check if current user is Regular account (single-transfer, quantity * rate, final settlement)
+  const isLofferUser = isRegularUser;
   
   // Parties state and caching logic
   const [parties, setParties] = useState<Party[]>(() => {
@@ -102,6 +107,7 @@ const LedgerView = () => {
 
   
   // Entry Form inputs
+  const [entryDate, setEntryDate] = useState<string>(getTodayDateStr);
   const [amount, setAmount] = useState('');
   const [remarks, setRemarks] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -509,6 +515,7 @@ const LedgerView = () => {
     setRemarks('');
     setQuantity('');
     setRate('');
+    setEntryDate(getTodayDateStr());
     setIsHeaderSearchOpen(false);
     setHeaderSearch('');
     setIsOldRecordsView(false);
@@ -607,7 +614,12 @@ const LedgerView = () => {
       }
     }
 
-    const success = await createTransactionEntry(amount, finalRemarks, effectiveLinkedParty);
+    const success = await createTransactionEntry(
+      amount,
+      finalRemarks,
+      effectiveLinkedParty,
+      isLofferUser ? entryDate : undefined
+    );
     if (success) {
       setAmount('');
       setRemarks('');
@@ -719,7 +731,7 @@ const LedgerView = () => {
       action: () => setIsDcModalOpen(true) 
     },
     { 
-      name: 'Monday Final', 
+      name: isLofferUser ? 'Final Settlement' : 'Monday Final', 
       icon: <Calendar className="w-4 h-4" />, 
       color: 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-none hover:bg-indigo-700', 
       action: handleMondayFinal, 
@@ -1073,7 +1085,7 @@ const LedgerView = () => {
                       </p>
                       <p className="text-xs font-medium text-slate-400 dark:text-slate-500 max-w-sm text-center">
                         {isOldRecordsView 
-                          ? `No finalized settlement records found for ${selectedParty.party_name}. Records are archived here after Monday Final settlement.`
+                          ? `No finalized settlement records found for ${selectedParty.party_name}. Records are archived here after ${isLofferUser ? 'Final' : 'Monday Final'} settlement.`
                           : 'Add a new transaction using the form below.'}
                       </p>
                       {isOldRecordsView && (
@@ -1158,7 +1170,13 @@ const LedgerView = () => {
                                       ? 'text-sky-500 dark:text-sky-400 font-semibold'
                                       : 'text-slate-400 dark:text-slate-500'
                               }`}>
-                                {t.remarks.startsWith('(') && t.remarks.endsWith(')') ? t.remarks : `(${t.remarks})`}
+                                {(() => {
+                                  let rem = t.remarks || '';
+                                  if (isLofferUser && t.is_settlement) {
+                                    rem = rem.replace(/MONDAY FINAL/gi, 'FINAL');
+                                  }
+                                  return rem.startsWith('(') && rem.endsWith(')') ? rem : `(${rem})`;
+                                })()}
                               </span>
                             )}
                           </td>
@@ -1210,30 +1228,73 @@ const LedgerView = () => {
               <div className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 md:p-6 shadow-xl dark:shadow-none shrink-0 transition-colors duration-200">
                 <form onSubmit={handleSubmitEntry} className={`max-w-6xl mx-auto flex flex-col lg:flex-row gap-3 lg:gap-4 items-stretch lg:items-end ${isOldRecordsView ? 'opacity-50 pointer-events-none' : ''}`}>
                   {isLofferUser ? (
-                    /* LOFFERS DTF Custom Layout: Transfer To (Fixed) | Qty | Rate | Total Amount | Remarks */
+                    /* LOFFERS DTF Custom Layout: [Calendar Logo + Transfer To (Fixed)] | Qty | Rate | Total Amount | Remarks */
                     <div className="flex-grow grid grid-cols-2 md:grid-cols-12 gap-2.5 sm:gap-3 lg:gap-4">
-                      {/* 1. Transfer To (Fixed) */}
+                      {/* 1. Date (Logo Button) + Transfer To (Fixed) */}
                       <div className="space-y-1.5 col-span-2 md:col-span-3">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Transfer To</label>
-                        <div className="relative bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 md:py-3 px-4 flex items-center cursor-not-allowed">
-                          <div className="flex items-center gap-2 overflow-hidden w-full">
-                            <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                            <span className="font-bold text-slate-800 dark:text-white text-sm md:text-base truncate">
-                              {lofferCompanyParty?.party_name || 'LOFFERS DTF'}
-                            </span>
+                        <div className="flex items-center justify-between h-4">
+                          <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                            Transfer To
+                          </label>
+                          {entryDate !== getTodayDateStr() && (
+                            <button
+                              type="button"
+                              onClick={() => setEntryDate(getTodayDateStr())}
+                              className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/40 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-800 transition-colors animate-in fade-in"
+                              title="Click to reset date to today"
+                            >
+                              <Calendar className="w-2.5 h-2.5" />
+                              {new Date(entryDate + 'T00:00:00').toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              <span className="text-[11px] font-black ml-0.5 opacity-60 hover:opacity-100">×</span>
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {/* Calendar Logo Button */}
+                          <div 
+                            className="relative shrink-0" 
+                            title={entryDate === getTodayDateStr() ? "Select Date (Today)" : `Date: ${entryDate} (Click to change)`}
+                          >
+                            <button
+                              type="button"
+                              className={`h-[46px] md:h-[52px] w-[46px] md:w-[52px] rounded-xl border flex items-center justify-center transition-all cursor-pointer ${
+                                entryDate !== getTodayDateStr()
+                                  ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200 dark:shadow-none'
+                                  : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400'
+                              }`}
+                            >
+                              <Calendar className="w-5 h-5" />
+                              <input 
+                                type="date"
+                                value={entryDate}
+                                onChange={(e) => setEntryDate(e.target.value)}
+                                onClick={(e) => (e.target as any).showPicker?.()}
+                                className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                              />
+                            </button>
+                          </div>
+
+                          {/* Transfer To (Fixed) */}
+                          <div className="relative flex-grow bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl h-[46px] md:h-[52px] px-3.5 flex items-center cursor-not-allowed overflow-hidden">
+                            <div className="flex items-center gap-2 overflow-hidden w-full">
+                              <Building2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                              <span className="font-bold text-slate-800 dark:text-white text-sm md:text-base truncate">
+                                {lofferCompanyParty?.party_name || 'LOFFERS DTF'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
                       {/* 2. Quantity */}
                       <div className="space-y-1.5 col-span-1 md:col-span-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Quantity (Qty)</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 h-4 flex items-center">Quantity (Qty)</label>
                         <input 
                           ref={quantityInputRef}
                           type="number" 
                           step="any"
                           placeholder="Qty" 
-                          className="w-full px-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-base md:text-lg text-slate-900 dark:text-white transition-colors" 
+                          className="w-full h-[46px] md:h-[52px] px-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-base md:text-lg text-slate-900 dark:text-white transition-colors" 
                           value={quantity} 
                           onChange={(e) => handleQuantityChange(e.target.value)} 
                           onKeyDown={(e) => {
@@ -1247,13 +1308,13 @@ const LedgerView = () => {
 
                       {/* 3. Rate */}
                       <div className="space-y-1.5 col-span-1 md:col-span-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Rate (₹)</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 h-4 flex items-center">Rate (₹)</label>
                         <input 
                           ref={rateInputRef}
                           type="number" 
                           step="any"
                           placeholder="Rate" 
-                          className="w-full px-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-base md:text-lg text-slate-900 dark:text-white transition-colors" 
+                          className="w-full h-[46px] md:h-[52px] px-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-bold text-base md:text-lg text-slate-900 dark:text-white transition-colors" 
                           value={rate} 
                           onChange={(e) => handleRateChange(e.target.value)} 
                           onKeyDown={(e) => {
@@ -1267,14 +1328,14 @@ const LedgerView = () => {
 
                       {/* 4. Total Amount */}
                       <div className="space-y-1.5 col-span-2 md:col-span-2">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Total Amount (₹)</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 h-4 flex items-center">Total Amount (₹)</label>
                         <input 
                           ref={amountInputRef} 
                           required 
                           type="number" 
                           step="1" 
                           placeholder="Total" 
-                          className={`w-full px-4 md:px-5 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg md:text-xl transition-colors ${getAmountColorClass()}`} 
+                          className={`w-full h-[46px] md:h-[52px] px-4 md:px-5 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 outline-none font-black text-lg md:text-xl transition-colors ${getAmountColorClass()}`} 
                           value={amount} 
                           onChange={(e) => setAmount(e.target.value)} 
                           onKeyDown={(e) => {
@@ -1288,13 +1349,13 @@ const LedgerView = () => {
 
                       {/* 5. Remarks */}
                       <div className="space-y-1.5 col-span-2 md:col-span-3">
-                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">Narration / Remarks</label>
+                        <label className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1 h-4 flex items-center">Narration / Remarks</label>
                         <div className="relative">
                           <Plus className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-slate-500" />
                           <input 
                             ref={remarksInputRef}
                             placeholder="Details (Optional)..." 
-                            className="w-full pl-11 pr-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 text-sm md:text-base" 
+                            className="w-full h-[46px] md:h-[52px] pl-11 pr-4 py-2.5 md:py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none font-medium text-slate-800 dark:text-white rounded-xl focus:ring-4 focus:ring-blue-600/10 focus:border-blue-600 text-sm md:text-base" 
                             value={remarks} 
                             onChange={(e) => setRemarks(e.target.value)} 
                           />
@@ -1552,6 +1613,7 @@ const LedgerView = () => {
           printStartDate={printStartDate}
           printEndDate={printEndDate}
           printOpeningBalance={printOpeningBalance}
+          isLofferUser={isLofferUser}
         />
       )}
     </>

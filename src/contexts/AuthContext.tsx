@@ -1,8 +1,9 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Session, User } from '@supabase/supabase-js';
+import { checkIsRegularUser, type AccountType } from '../utils/userType';
 
-interface Profile {
+export interface Profile {
   id: string;
   full_name: string | null;
   company_name: string | null;
@@ -14,12 +15,15 @@ interface Profile {
   plan_type: string | null;
   is_blocked: boolean | null;
   is_paid: boolean | null;
+  account_type?: AccountType;
 }
 
 interface AuthContextType {
   session: Session | null;
   user: User | null;
   profile: Profile | null;
+  isRegularUser: boolean;
+  accountType: AccountType;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   refreshProfile: () => Promise<void>;
@@ -58,7 +62,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   });
 
-  const fetchProfile = async (userId: string, userEmail?: string, userFullName?: string) => {
+  const fetchProfile = async (userId: string, userEmail?: string, userFullName?: string, userMetadata?: any) => {
     try {
       // 5-second timeout for background profile fetches
       const timeoutPromise = new Promise<{ data: null; error: Error }>((resolve) => 
@@ -97,8 +101,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (error) {
         return null;
       }
-      
+
       if (data) {
+        // Resolve account_type from user_metadata, system_settings, or defaults
+        let resolvedType: AccountType = (userMetadata?.account_type as any) || null;
+        if (!resolvedType) {
+          try {
+            const { data: stData } = await supabase
+              .from('system_settings')
+              .select('*')
+              .eq('key', 'user_account_types')
+              .single();
+            if (stData?.value && stData.value[userId]) {
+              resolvedType = stData.value[userId] as AccountType;
+            }
+          } catch {
+            // ignore settings fetch error
+          }
+        }
+        if (!resolvedType) {
+          resolvedType = checkIsRegularUser({ id: userId, email: userEmail }, data) ? 'regular' : 'ca';
+        }
+        (data as any).account_type = resolvedType;
+
         try {
           localStorage.setItem('cached_profile', JSON.stringify(data));
         } catch (e) {
@@ -113,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshProfile = async () => {
     if (user) {
-      const data = await fetchProfile(user.id, user.email, user.user_metadata?.full_name);
+      const data = await fetchProfile(user.id, user.email, user.user_metadata?.full_name, user.user_metadata);
       setProfile(data);
     }
   };
@@ -135,7 +160,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (data.session && data.user) {
         setSession(data.session);
         setUser(data.user);
-        const profileData = await fetchProfile(data.user.id, data.user.email, data.user.user_metadata?.full_name);
+        const profileData = await fetchProfile(data.user.id, data.user.email, data.user.user_metadata?.full_name, data.user.user_metadata);
         if (profileData) {
           setProfile(profileData);
         }
@@ -166,7 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setSession(initialSession);
           setUser(initialSession.user);
           // Fetch profile in parallel in the background without awaiting it!
-          fetchProfile(initialSession.user.id, initialSession.user.email, initialSession.user.user_metadata?.full_name).then((profileData) => {
+          fetchProfile(initialSession.user.id, initialSession.user.email, initialSession.user.user_metadata?.full_name, initialSession.user.user_metadata).then((profileData) => {
             if (mounted && profileData) setProfile(profileData);
           });
         }
@@ -188,7 +213,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(currentUser);
       
       if (currentUser) {
-        fetchProfile(currentUser.id, currentUser.email, currentUser.user_metadata?.full_name).then((profileData) => {
+        fetchProfile(currentUser.id, currentUser.email, currentUser.user_metadata?.full_name, currentUser.user_metadata).then((profileData) => {
           if (mounted && profileData) setProfile(profileData);
         });
       } else {
@@ -236,8 +261,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const isRegularUser = checkIsRegularUser(user, profile);
+  const accountType: AccountType = isRegularUser ? 'regular' : 'ca';
+
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signIn, refreshProfile, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, isRegularUser, accountType, loading, signIn, refreshProfile, signOut }}>
       {children}
     </AuthContext.Provider>
   );

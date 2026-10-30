@@ -16,11 +16,13 @@ import {
   FolderCheck,
   LogOut,
   XCircle,
-  FolderOpen
+  FolderOpen,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { googleDriveService, type GoogleDriveBackupFile } from '../services/googleDriveService';
 import { backupRestoreService, type EscrowBackupPayload } from '../services/backupRestoreService';
+import { autoBackupService, type AutoBackupConfig } from '../services/autoBackupService';
 
 const BackupPage: React.FC = () => {
   const { user } = useAuth();
@@ -56,6 +58,23 @@ const BackupPage: React.FC = () => {
   const [restoreSuccessMsg, setRestoreSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Auto 15-day backup state
+  const [autoConfig, setAutoConfig] = useState<AutoBackupConfig | null>(() => 
+    user ? autoBackupService.getConfig(user.id) : null
+  );
+  const [runningAutoBackup, setRunningAutoBackup] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setAutoConfig(autoBackupService.getConfig(user.id));
+    }
+    const handleConfigChange = () => {
+      if (user) setAutoConfig(autoBackupService.getConfig(user.id));
+    };
+    window.addEventListener('escrow_auto_backup_change', handleConfigChange);
+    return () => window.removeEventListener('escrow_auto_backup_change', handleConfigChange);
+  }, [user]);
+
   // Initialize Drive connection on mount
   useEffect(() => {
     const isAuth = googleDriveService.isAuthenticated();
@@ -86,6 +105,9 @@ const BackupPage: React.FC = () => {
         setIsDriveConnected(true);
         setConnectedEmail(googleDriveService.getConnectedEmail());
         fetchDriveBackups();
+        if (user) {
+          autoBackupService.runAutomaticBackup(user.id, user.email || undefined);
+        }
       } else {
         setErrorMsg('Failed to connect Google Drive. Please allow popups and approve the Google permission.');
       }
@@ -117,6 +139,7 @@ const BackupPage: React.FC = () => {
 
       setDriveStatusMsg('Uploading backup to Google Drive...');
       await googleDriveService.uploadBackupFile(payload, fileName);
+      autoBackupService.recordDriveBackupTaken(user.id);
 
       setDriveStatusMsg('Backup saved successfully in your Google Drive!');
       setTimeout(() => setDriveStatusMsg(null), 4000);
@@ -131,7 +154,7 @@ const BackupPage: React.FC = () => {
     }
   };
 
-  // 2. DOWNLOAD LOCAL BACKUP FILE
+  // 2. DOWNLOAD LOCAL BACKUP FILE (Manual Only)
   const handleDownloadLocal = async () => {
     if (!user) return;
     setDownloadingLocal(true);
@@ -139,10 +162,26 @@ const BackupPage: React.FC = () => {
     try {
       const payload = await backupRestoreService.generateBackupData(user.id, user.email || undefined);
       backupRestoreService.downloadLocalBackup(payload);
+      autoBackupService.recordLocalBackupTaken(user.id);
     } catch (err: any) {
       setErrorMsg(err.message || 'Local backup failed');
     } finally {
       setDownloadingLocal(false);
+    }
+  };
+
+  // RUN 15-DAY DRIVE BACKUP NOW
+  const handleRunAutoBackupNow = async () => {
+    if (!user) return;
+    if (!isDriveConnected) {
+      handleConnectDrive();
+      return;
+    }
+    setRunningAutoBackup(true);
+    try {
+      await handleBackupToDrive();
+    } finally {
+      setRunningAutoBackup(false);
     }
   };
 
@@ -241,6 +280,111 @@ const BackupPage: React.FC = () => {
           <XCircle className="w-4 h-4" />
           Back to Ledger
         </button>
+      </div>
+
+      {/* 15-Day Automatic Backup Status Card */}
+      <div className="bg-gradient-to-br from-blue-50/80 via-indigo-50/60 to-blue-50/80 dark:from-slate-900 dark:via-blue-950/20 dark:to-slate-900 border-2 border-blue-200/90 dark:border-blue-800/80 rounded-3xl p-5 sm:p-6 mb-6 sm:mb-8 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="flex items-start sm:items-center gap-4">
+            <div className="w-12 h-12 bg-blue-600 dark:bg-blue-500 text-white rounded-2xl flex items-center justify-center shrink-0 shadow-md shadow-blue-500/25">
+              <Clock className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
+                  Google Drive 15-Day Auto-Backup
+                </h2>
+                {isDriveConnected ? (
+                  <span className="px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1.5 border border-emerald-300 dark:border-emerald-800">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Active (Every 15 Days)
+                  </span>
+                ) : (
+                  <span className="px-2.5 py-0.5 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-black rounded-full uppercase tracking-wider flex items-center gap-1.5 border border-slate-300 dark:border-slate-700">
+                    Connect Drive to Activate
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                {isDriveConnected 
+                  ? `Connected to Google Drive (${connectedEmail || 'Active'}). Automatic cloud backups run every 15 days in the background.` 
+                  : 'Connect your Google Drive once. Once connected, a full backup of all parties and ledger transactions will be automatically uploaded to your Google Drive every 15 days.'}
+              </p>
+
+              {/* Schedule Info Metrics */}
+              {isDriveConnected && (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 sm:gap-4 mt-3 pt-3 border-t border-blue-100 dark:border-slate-800">
+                  <div>
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-slate-500">Last Drive Backup</span>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                      {autoBackupService.formatDate(autoConfig?.lastDriveBackupAt)}
+                    </p>
+                    {autoConfig?.lastDriveBackupAt && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                        ({autoBackupService.formatRelativeTime(autoConfig.lastDriveBackupAt)})
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-slate-500">Next Scheduled</span>
+                    <p className="text-xs font-bold text-blue-600 dark:text-blue-400 mt-0.5">
+                      {user && autoBackupService.getNextBackupDate(user.id) 
+                        ? autoBackupService.formatDate(autoBackupService.getNextBackupDate(user.id)?.toISOString())
+                        : 'Due now'}
+                    </p>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <span className="text-[10px] uppercase font-black tracking-wider text-slate-400 dark:text-slate-500">Protection Status</span>
+                    <p className="text-xs font-bold mt-0.5">
+                      {user && autoBackupService.isBackupDue(user.id) ? (
+                        <span className="text-amber-600 dark:text-amber-400 font-extrabold flex items-center gap-1">
+                          ⚠️ Backup Due Now
+                        </span>
+                      ) : (
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+                          ✓ Protected ({user ? autoBackupService.getDaysRemaining(user.id) : 0} days remaining)
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Trigger 15-day backup button */}
+          <div className="shrink-0 flex items-center gap-2 self-start md:self-center">
+            {isDriveConnected ? (
+              <button
+                type="button"
+                onClick={handleRunAutoBackupNow}
+                disabled={runningAutoBackup || backingUpDrive}
+                className="w-full md:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95 disabled:opacity-50 shadow-md shadow-blue-500/20"
+              >
+                {runningAutoBackup || backingUpDrive ? (
+                  <>
+                    <RefreshCcw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving to Drive...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Backup to Drive Now</span>
+                  </>
+                )}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleConnectDrive}
+                className="w-full md:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-md shadow-blue-500/20"
+              >
+                <Cloud className="w-3.5 h-3.5" />
+                <span>Connect Google Drive</span>
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Mode Tabs */}
@@ -384,7 +528,13 @@ const BackupPage: React.FC = () => {
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        Target Folder: <strong className="text-slate-700 dark:text-slate-300">Google Drive &gt; Escrow Ledger Backups</strong> (Auto-detected)
+                        Target Folder: <strong className="text-slate-700 dark:text-slate-300">Google Drive &gt; Escrow Ledger Backups</strong>
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Last Cloud Backup: <strong className="text-blue-600 dark:text-blue-400 font-bold">{autoBackupService.formatDate(autoConfig?.lastDriveBackupAt)}</strong>
+                        {autoConfig?.lastDriveBackupAt && (
+                          <span className="text-slate-400 ml-1">({autoBackupService.formatRelativeTime(autoConfig.lastDriveBackupAt)})</span>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -534,6 +684,17 @@ const BackupPage: React.FC = () => {
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                 Creates a standalone JSON file containing all parties, transactions, commission rates, and profile details for offline archival on your device.
               </p>
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-100 dark:border-slate-800 text-xs">
+                <span className="text-slate-400 dark:text-slate-500 font-semibold">Last Local Download: </span>
+                <strong className="text-slate-700 dark:text-slate-300 font-bold">
+                  {autoBackupService.formatDate(autoConfig?.lastLocalBackupAt)}
+                </strong>
+                {autoConfig?.lastLocalBackupAt && (
+                  <span className="text-slate-400 text-[11px] ml-1">
+                    ({autoBackupService.formatRelativeTime(autoConfig.lastLocalBackupAt)})
+                  </span>
+                )}
+              </div>
             </div>
 
             <button

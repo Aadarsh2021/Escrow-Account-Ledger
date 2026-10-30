@@ -18,15 +18,14 @@ import {
   Moon,
   Download,
   Cloud,
-  RefreshCw,
-  Trash2,
-  FileX
+  RefreshCw
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { autoBackupService, type AutoBackupConfig } from '../../services/autoBackupService';
 
 const Navbar = () => {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, isRegularUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,12 +33,23 @@ const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
 
-  const isLofferUser = 
-    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
-    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
-    profile?.company_name?.toLowerCase() === 'loffers dtf';
+  const isLofferUser = isRegularUser;
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [autoConfig, setAutoConfig] = useState<AutoBackupConfig | null>(() => 
+    user ? autoBackupService.getConfig(user.id) : null
+  );
+
+  useEffect(() => {
+    if (user) {
+      setAutoConfig(autoBackupService.getConfig(user.id));
+    }
+    const handleChange = () => {
+      if (user) setAutoConfig(autoBackupService.getConfig(user.id));
+    };
+    window.addEventListener('escrow_auto_backup_change', handleChange);
+    return () => window.removeEventListener('escrow_auto_backup_change', handleChange);
+  }, [user]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -62,10 +72,7 @@ const Navbar = () => {
       subItems: [
         { name: 'Company Settings', icon: <Building2 className="w-4 h-4" />, path: '/configure/company' },
         { name: 'Backup', icon: <Download className="w-4 h-4" />, path: '/configure/backup' },
-        { name: 'Online Backup', icon: <Cloud className="w-4 h-4" />, path: '/configure/online-backup' },
-        { name: 'Clear Data & Keep Balance', icon: <RefreshCw className="w-4 h-4" />, path: '/configure/clear-data-keep-balance' },
-        { name: 'Clear All Balance', icon: <Trash2 className="w-4 h-4" />, path: '/configure/clear-all-balance' },
-        { name: 'Clear Backup', icon: <FileX className="w-4 h-4" />, path: '/configure/clear-backup' }
+        { name: 'Online Backup', icon: <Cloud className="w-4 h-4" />, path: '/configure/online-backup' }
       ]
     },
     { 
@@ -130,10 +137,22 @@ const Navbar = () => {
                         key={sub.name}
                         to={sub.path}
                         onClick={() => setActiveDropdown(null)}
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                       >
-                        {sub.icon}
-                        {sub.name}
+                        <div className="flex items-center gap-3">
+                          {sub.icon}
+                          <span>{sub.name}</span>
+                        </div>
+                        {sub.path === '/configure/online-backup' && autoConfig?.lastDriveBackupAt && (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded">
+                            {autoBackupService.formatRelativeTime(autoConfig.lastDriveBackupAt) || 'Backed up'}
+                          </span>
+                        )}
+                        {sub.path === '/configure/backup' && autoConfig?.lastLocalBackupAt && (
+                          <span className="text-[10px] text-slate-500 font-medium">
+                            {autoBackupService.formatRelativeTime(autoConfig.lastLocalBackupAt)}
+                          </span>
+                        )}
                       </Link>
                     ))}
                   </div>
@@ -163,10 +182,15 @@ const Navbar = () => {
               <Link
                 to="/configure/online-backup"
                 className="px-2.5 py-1.5 sm:px-3 sm:py-2 bg-blue-50/80 hover:bg-blue-100/90 dark:bg-blue-950/40 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 rounded-xl transition-all border border-blue-200/50 dark:border-blue-800/60 shadow-sm active:scale-95 flex items-center gap-1.5 text-xs font-bold"
-                title="Google Drive Cloud Backup"
+                title={autoConfig?.lastDriveBackupAt ? `Last Backup: ${autoBackupService.formatDate(autoConfig.lastDriveBackupAt)}` : 'Google Drive Cloud Backup'}
               >
                 <Cloud className="w-4 h-4" />
                 <span className="hidden lg:inline">Cloud Backup</span>
+                {autoConfig?.lastDriveBackupAt && (
+                  <span className="hidden xl:inline text-[10px] opacity-75 font-normal">
+                    ({autoBackupService.formatRelativeTime(autoConfig.lastDriveBackupAt)})
+                  </span>
+                )}
               </Link>
             )}
 

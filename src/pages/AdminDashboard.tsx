@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdmin } from '../contexts/AdminContext';
-import { supabase } from '../lib/supabase';
+import { supabase, serviceSupabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
 import { AdminModals } from '../components/admin/AdminModals';
 import { AdminOverview } from '../components/admin/AdminOverview';
@@ -28,6 +28,7 @@ interface AdminUser {
   last_sign_in_at: string | null;
   subscription_expires_at: string | null;
   plan_type: string;
+  account_type?: string;
   is_blocked: boolean;
   is_paid: boolean;
   client_count: number;
@@ -76,6 +77,7 @@ const AdminDashboard = () => {
   // User Edit Inputs
   const [editPlanType, setEditPlanType] = useState('trial');
   const [editIsPaid, setEditIsPaid] = useState(false);
+  const [editAccountType, setEditAccountType] = useState('ca');
 
   // System Settings States
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -99,7 +101,6 @@ const AdminDashboard = () => {
       // 2. Fetch Users
       const { data: usersData, error: usersErr } = await supabase.rpc('admin_get_all_users');
       if (usersErr) throw usersErr;
-      if (usersData) setUsers(usersData);
 
       // 3. Fetch Audit Logs
       const { data: logsData, error: logsErr } = await supabase
@@ -117,16 +118,35 @@ const AdminDashboard = () => {
         .from('system_settings')
         .select('*');
 
+      let accountTypesMap: Record<string, string> = {};
+
       if (!settingsErr && settings) {
         const maint = settings.find(s => s.key === 'maintenance_mode');
         const signups = settings.find(s => s.key === 'public_signups');
         const bcast = settings.find(s => s.key === 'platform_broadcast');
+        const userTypes = settings.find(s => s.key === 'user_account_types');
 
         if (maint) setMaintenanceMode(maint.value === true || maint.value === 'true');
         if (signups) setPublicSignups(signups.value === true || signups.value === 'true');
         if (bcast && bcast.value) {
           setBroadcastMessage(bcast.value.message || '');
         }
+        if (userTypes && userTypes.value) {
+          accountTypesMap = typeof userTypes.value === 'string' ? JSON.parse(userTypes.value) : userTypes.value;
+        }
+      }
+
+      if (usersData) {
+        const mappedUsers: AdminUser[] = usersData.map((u: AdminUser) => {
+          const explicitType = accountTypesMap[u.user_id];
+          const isLoff = u.email?.toLowerCase().includes('dtfsurat') || u.company_name?.toLowerCase().includes('loffer');
+          const accountType = explicitType || (isLoff ? 'regular' : 'ca');
+          return {
+            ...u,
+            account_type: accountType
+          };
+        });
+        setUsers(mappedUsers);
       }
 
       if (showToast) toast.success("Dashboard metrics revalidated!");
@@ -228,7 +248,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // 4b. Update User Plan & Payment Status
+  // 4b. Update User Plan & Payment Status & Account Type
   const handleUpdateUserPlan = async () => {
     if (!selectedUser) return;
     setActionLoading(true);
@@ -239,13 +259,82 @@ const AdminDashboard = () => {
         new_is_paid: editIsPaid
       });
       if (error) throw error;
-      toast.success(`User plan updated: ${editPlanType} (${editIsPaid ? 'Paid' : 'Unpaid'})`);
+
+      // Update account type in system_settings
+      const { data: currentSettings } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'user_account_types')
+        .maybeSingle();
+
+      const existingMap = currentSettings?.value 
+        ? (typeof currentSettings.value === 'string' ? JSON.parse(currentSettings.value) : currentSettings.value) 
+        : {};
+
+      const updatedMap = {
+        ...existingMap,
+        [selectedUser.user_id]: editAccountType
+      };
+
+      await serviceSupabase
+        .from('system_settings')
+        .upsert({ key: 'user_account_types', value: updatedMap }, { onConflict: 'key' });
+
+      try {
+        await serviceSupabase.auth.admin.updateUserById(selectedUser.user_id, {
+          user_metadata: { account_type: editAccountType }
+        });
+      } catch (metaErr) {
+        console.warn("Could not update auth metadata directly:", metaErr);
+      }
+
+      toast.success(`User updated: ${editPlanType} | ${editAccountType === 'regular' ? 'Regular' : 'CA'} (${editIsPaid ? 'Paid' : 'Unpaid'})`);
       setIsDetailsOpen(false);
       loadDashboardData();
     } catch (err: any) {
       toast.error(err.message || "Failed to update user plan.");
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  // 4c. Quick change account type from table
+  const handleQuickChangeAccountType = async (userId: string, newType: string) => {
+    try {
+      setUsers(prev => prev.map(u => u.user_id === userId ? { ...u, account_type: newType } : u));
+
+      const { data: currentSettings } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', 'user_account_types')
+        .maybeSingle();
+
+      const existingMap = currentSettings?.value 
+        ? (typeof currentSettings.value === 'string' ? JSON.parse(currentSettings.value) : currentSettings.value) 
+        : {};
+
+      const updatedMap = {
+        ...existingMap,
+        [userId]: newType
+      };
+
+      await serviceSupabase
+        .from('system_settings')
+        .upsert({ key: 'user_account_types', value: updatedMap }, { onConflict: 'key' });
+
+      try {
+        await serviceSupabase.auth.admin.updateUserById(userId, {
+          user_metadata: { account_type: newType }
+        });
+      } catch (metaErr) {
+        console.warn("Could not update auth metadata directly:", metaErr);
+      }
+
+      toast.success(`Account switched to ${newType === 'regular' ? 'Regular' : 'CA'}`);
+    } catch (err: any) {
+      console.error("Failed to update user account type:", err);
+      toast.error("Failed to update user type");
+      loadDashboardData();
     }
   };
 
@@ -512,6 +601,7 @@ const AdminDashboard = () => {
                   <tr className="border-b border-slate-200 bg-slate-50 text-slate-500 text-[10px] font-black uppercase tracking-wider">
                     <th className="py-4 px-6">Company / Organization</th>
                     <th className="py-4 px-6">Registered Email</th>
+                    <th className="py-4 px-6">User Type</th>
                     <th className="py-4 px-6">Last Activity</th>
                     <th className="py-4 px-6">Status Badge</th>
                     <th className="py-4 px-6">Time Left</th>
@@ -523,14 +613,14 @@ const AdminDashboard = () => {
                   {loading ? (
                     Array.from({ length: 5 }).map((_, i) => (
                       <tr key={i}>
-                        <td colSpan={7} className="py-5 px-6">
+                        <td colSpan={8} className="py-5 px-6">
                           <div className="h-6 bg-slate-100 rounded animate-pulse w-full" />
                         </td>
                       </tr>
                     ))
                   ) : paginatedUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-20 px-6 space-y-3">
+                      <td colSpan={8} className="text-center py-20 px-6 space-y-3">
                         <div className="p-4 bg-slate-50 rounded-full w-14 h-14 flex items-center justify-center mx-auto border border-slate-100">
                           <Search className="w-6 h-6 text-slate-400" />
                         </div>
@@ -558,6 +648,22 @@ const AdminDashboard = () => {
                           {/* Email column */}
                           <td className="py-4 px-6 font-semibold text-slate-600 text-xs">
                             {user.email}
+                          </td>
+
+                          {/* User Type column (CA vs Regular) */}
+                          <td className="py-4 px-6" onClick={(e) => e.stopPropagation()}>
+                            <select
+                              value={user.account_type || 'ca'}
+                              onChange={(e) => handleQuickChangeAccountType(user.user_id, e.target.value)}
+                              className={`text-xs font-black px-2.5 py-1 rounded-xl border cursor-pointer outline-none transition-all shadow-sm ${
+                                user.account_type === 'regular'
+                                  ? 'bg-purple-50 text-purple-700 border-purple-200 hover:border-purple-300'
+                                  : 'bg-blue-50 text-blue-700 border-blue-200 hover:border-blue-300'
+                              }`}
+                            >
+                              <option value="ca">CA</option>
+                              <option value="regular">Regular</option>
+                            </select>
                           </td>
 
                           {/* Activity column */}
@@ -607,6 +713,7 @@ const AdminDashboard = () => {
                                   setSelectedUser(user);
                                   setEditPlanType(user.plan_type || 'trial');
                                   setEditIsPaid(user.is_paid || false);
+                                  setEditAccountType(user.account_type || 'ca');
                                   setIsDetailsOpen(true);
                                 }}
                                 className="p-2 text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 rounded-lg border border-blue-100 transition-all shadow-sm"
@@ -753,6 +860,8 @@ const AdminDashboard = () => {
         setEditPlanType={setEditPlanType}
         editIsPaid={editIsPaid}
         setEditIsPaid={setEditIsPaid}
+        editAccountType={editAccountType}
+        setEditAccountType={setEditAccountType}
         handleUpdateUserPlan={handleUpdateUserPlan}
         isResetOpen={isResetOpen}
         setIsResetOpen={setIsResetOpen}

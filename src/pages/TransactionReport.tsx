@@ -44,12 +44,9 @@ interface PartyOption {
 }
 
 const TransactionReport = () => {
-  const { user, profile } = useAuth();
+  const { user, isRegularUser } = useAuth();
 
-  const isLofferUser = 
-    user?.id === '7c30d63e-7bc3-44cf-bbe0-eb463f8b86a7' ||
-    user?.email?.toLowerCase() === 'dtfsurat@gmail.com' ||
-    profile?.company_name?.toLowerCase() === 'loffers dtf';
+  const isLofferUser = isRegularUser;
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

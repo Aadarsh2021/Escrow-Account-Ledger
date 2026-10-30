@@ -17,48 +17,6 @@ import html2canvas from 'html2canvas';
 import type { Party, Transaction } from '../../hooks/useLedgerTransactions';
 import { supabase, serviceSupabase } from '../../lib/supabase';
 
-async function shortenUrl(longUrl?: string | null): Promise<string> {
-  if (!longUrl || typeof longUrl !== 'string' || longUrl.length < 35) return longUrl || '';
-  
-  // 1. is.gd (Full browser CORS support, instant short link)
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const json = await res.json();
-      if (json?.shorturl) {
-        return json.shorturl;
-      }
-    }
-  } catch (err) {
-    console.warn('is.gd failed, trying v.gd:', err);
-  }
-
-  // 2. v.gd fallback (Full browser CORS support)
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`https://v.gd/create.php?format=json&url=${encodeURIComponent(longUrl)}`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const json = await res.json();
-      if (json?.shorturl) {
-        return json.shorturl;
-      }
-    }
-  } catch (err) {
-    console.warn('v.gd fallback failed:', err);
-  }
-
-  return longUrl;
-}
-
 interface WhatsAppReportModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -91,6 +49,8 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
   const [canDirectShare, setCanDirectShare] = useState<boolean>(false);
 
   const reportCardRef = useRef<HTMLDivElement>(null);
+  const isLofferUser = (companyName || '').toLowerCase().includes('loffer');
+  const APP_BASE_URL = 'https://www.ledger.escrowbms.in';
 
   // Check if device supports direct file sharing (Mobile phones / tablets)
   useEffect(() => {
@@ -148,8 +108,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             // Auto-upload bill to Supabase Storage 'statements' bucket in background
             try {
               setUploadingCloud(true);
-              const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
-              const fileName = `parties/${party.id}/bill_${cleanParty}_${Date.now()}.png`;
+              const fileName = `bills/${party.id.slice(0, 8)}_${Date.now()}.png`;
 
               const { error: upErr } = await serviceSupabase.storage
                 .from('statements')
@@ -159,13 +118,8 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
                 });
 
               if (!upErr) {
-                const { data: pubData } = serviceSupabase.storage
-                  .from('statements')
-                  .getPublicUrl(fileName);
-                if (pubData?.publicUrl) {
-                  const short = await shortenUrl(pubData.publicUrl);
-                  setBillPublicUrl(short);
-                }
+                const viewerLink = `${APP_BASE_URL}/view-statement?p=${encodeURIComponent(fileName)}&party=${encodeURIComponent(party.party_name)}`;
+                setBillPublicUrl(viewerLink);
               } else {
                 console.warn('Background bill upload error:', upErr);
               }
@@ -192,7 +146,6 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
   const totalCredit = transactions.reduce((sum, t) => sum + (t.credit || 0), 0);
   const totalDebit = transactions.reduce((sum, t) => sum + (t.debit || 0), 0);
   const closingBalance = transactions.length > 0 ? (transactions[transactions.length - 1].balance || 0) : 0;
-  const balanceType = closingBalance >= 0 ? 'CR' : 'DR';
 
   // Build clean WhatsApp phone number (E.164 without plus)
   const cleanPhone = (num: string) => {
@@ -213,16 +166,15 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     year: 'numeric'
   });
 
-  const messageTemplate = `*${companyName} - Account Statement* 📄\n\n` +
-    `Dear *${party.party_name}*,\n` +
-    `Here is your transaction ledger statement as of ${formattedDate}:\n\n` +
-    `📊 *Total Entries:* ${transactions.length}\n` +
-    `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
-    `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
-    `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-    (billPublicUrl ? `🔗 *View / Download Bill:*\n${billPublicUrl}\n\n` : (uploadingCloud ? `⏳ [Generating Short Bill Link...]\n\n` : '')) +
-    `Thank you for your business! 🙏\n` +
-    `- *${companyName}*`;
+  const balanceLabel = closingBalance >= 0 ? 'CR (Jama)' : 'DR (Lena)';
+
+  const messageTemplate = 
+    `*${companyName} - Statement* 📄\n\n` +
+    `Dear *${party.party_name}*, ledger summary as of ${formattedDate}:\n` +
+    `🔴 Debit: ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')} | 🟢 Credit: ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
+    `📌 *Net Balance: ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceLabel}*\n\n` +
+    (billPublicUrl ? `🔗 *Bill:* ${billPublicUrl}\n\n` : (uploadingCloud ? `⏳ [Preparing Bill Link...]\n\n` : '')) +
+    `Thank you! 🙏 - *${companyName}*`;
 
   // Save phone number to database
   const handleSavePhone = async () => {
@@ -287,20 +239,14 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
     if (!finalBillUrl && imageBlob) {
       setUploadingCloud(true);
       try {
-        const cleanParty = (party.party_name || 'Client').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const fileName = `parties/${party.id}/bill_${cleanParty}_${Date.now()}.png`;
+        const fileName = `bills/${party.id.slice(0, 8)}_${Date.now()}.png`;
         const { error: upErr } = await serviceSupabase.storage
           .from('statements')
           .upload(fileName, imageBlob, { upsert: true, contentType: 'image/png' });
         if (!upErr) {
-          const { data: pubData } = serviceSupabase.storage
-            .from('statements')
-            .getPublicUrl(fileName);
-          if (pubData?.publicUrl) {
-            const short = await shortenUrl(pubData.publicUrl);
-            finalBillUrl = short;
-            setBillPublicUrl(short);
-          }
+          const viewerLink = `${APP_BASE_URL}/view-statement?p=${encodeURIComponent(fileName)}&party=${encodeURIComponent(party.party_name)}`;
+          finalBillUrl = viewerLink;
+          setBillPublicUrl(viewerLink);
         }
       } catch (e) {
         console.warn('Upload error:', e);
@@ -314,28 +260,17 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
       handleSavePhone();
     }
 
-    const finalMsg = `*${companyName} - Account Statement* 📄\n\n` +
-      `Dear *${party.party_name}*,\n` +
-      `Here is your transaction ledger statement as of ${formattedDate}:\n\n` +
-      `📊 *Total Entries:* ${transactions.length}\n` +
-      `🔴 *Total Debit (DR):* ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}\n` +
-      `🟢 *Total Credit (CR):* ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
-      `📌 *Net Balance:* ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceType}\n\n` +
-      (finalBillUrl ? `🔗 *View / Download Bill:*\n${finalBillUrl}\n\n` : '') +
-      `Thank you for your business! 🙏\n` +
-      `- *${companyName}*`;
+    const balanceLabelFinal = closingBalance >= 0 ? 'CR (Jama)' : 'DR (Lena)';
 
-    // Copy Image & Text to Clipboard for seamless 1-click paste (Ctrl+V)
-    if (imageBlob) {
-      try {
-        const item = new ClipboardItem({ 'image/png': imageBlob });
-        await navigator.clipboard.write([item]);
-        setCopyNotice(true);
-        setTimeout(() => setCopyNotice(false), 6000);
-      } catch (clipErr) {
-        console.warn('Clipboard write skipped:', clipErr);
-      }
-    }
+    const finalMsg = 
+      `*${companyName} - Statement* 📄\n\n` +
+      `Dear *${party.party_name}*, ledger summary as of ${formattedDate}:\n` +
+      `🔴 Debit: ₹${Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')} | 🟢 Credit: ₹${Math.round(totalCredit).toLocaleString('en-IN')}\n` +
+      `📌 *Net Balance: ₹${Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} ${balanceLabelFinal}*\n\n` +
+      (finalBillUrl ? `🔗 *Bill:* ${finalBillUrl}\n\n` : '') +
+      `Thank you! 🙏 - *${companyName}*`;
+
+
 
     const encodedText = encodeURIComponent(finalMsg);
     // Directly target the client's phone number so user does NOT have to search manually!
@@ -398,7 +333,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
               <h2 className="text-lg sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2 flex-wrap">
                 WhatsApp Statement
                 <span className="text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 font-bold rounded-full">
-                  LOFFERS DTF
+                  {companyName}
                 </span>
               </h2>
               <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400">
@@ -556,7 +491,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
           <div className="bg-emerald-50/70 dark:bg-emerald-950/20 p-3.5 rounded-xl border border-emerald-100 dark:border-emerald-900/30 flex items-start gap-2.5 text-xs text-emerald-800 dark:text-emerald-300">
             <span className="text-base">🚀</span>
             <p className="leading-relaxed">
-              <strong>Direct WhatsApp Chat:</strong> Clicking <strong>"Send on WhatsApp"</strong> opens <strong>{party.party_name} ({phoneNumber || 'Client'})</strong>'s chat directly with zero searching! Bill image is also auto-copied to clipboard for quick paste (Ctrl+V).
+              <strong>Direct WhatsApp Chat:</strong> Clicking <strong>"Send on WhatsApp"</strong> opens <strong>{party.party_name} ({phoneNumber || 'Client'})</strong>'s chat directly with zero searching and official online bill statement link included!
             </p>
           </div>
         </div>
@@ -627,11 +562,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             </div>
 
             <div className="text-right">
-              <div className="inline-block bg-slate-900 text-white px-3 py-1 rounded text-xs font-black uppercase tracking-wider mb-2">
-                STATEMENT
-              </div>
-              <p className="text-xs font-bold text-slate-500">Date: {formattedDate}</p>
-              <p className="text-xs font-bold text-slate-500">Total Entries: {transactions.length}</p>
+              <p className="text-xs font-bold text-slate-600">Date: {formattedDate}</p>
             </div>
           </div>
 
@@ -644,9 +575,6 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
                   {companyName} - Account Statement
                 </span>
               </div>
-              <span className="text-[11px] font-bold px-3 py-0.5 bg-emerald-600 text-white rounded-full">
-                As of {formattedDate}
-              </span>
             </div>
 
             <div className="pt-2.5 space-y-1 text-xs text-slate-800">
@@ -659,23 +587,19 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
             </div>
 
             {/* Quick Metrics Grid */}
-            <div className="grid grid-cols-4 gap-2.5 mt-3 pt-3 border-t border-emerald-200/60 text-center">
-              <div className="bg-white p-2.5 rounded-xl border border-emerald-100 shadow-sm">
-                <p className="text-[9px] font-black uppercase tracking-wider text-slate-400">Total Entries</p>
-                <p className="text-sm font-black text-slate-800 mt-0.5">{transactions.length}</p>
-              </div>
+            <div className="grid grid-cols-3 gap-3 mt-3 pt-3 border-t border-emerald-200/60 text-center">
               <div className="bg-white p-2.5 rounded-xl border border-rose-100 shadow-sm">
-                <p className="text-[9px] font-black uppercase tracking-wider text-rose-500">Total Debit (DR)</p>
+                <p className="text-[9px] font-black uppercase tracking-wider text-rose-500">Total Debit (DR - Lena)</p>
                 <p className="text-sm font-black text-rose-600 mt-0.5">₹{Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}</p>
               </div>
               <div className="bg-white p-2.5 rounded-xl border border-emerald-100 shadow-sm">
-                <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Total Credit (CR)</p>
+                <p className="text-[9px] font-black uppercase tracking-wider text-emerald-600">Total Credit (CR - Jama)</p>
                 <p className="text-sm font-black text-emerald-600 mt-0.5">₹{Math.round(totalCredit).toLocaleString('en-IN')}</p>
               </div>
               <div className={`p-2.5 rounded-xl border shadow-sm ${closingBalance >= 0 ? 'bg-emerald-100/50 border-emerald-300' : 'bg-rose-100/50 border-rose-300'}`}>
                 <p className="text-[9px] font-black uppercase tracking-wider text-slate-600">Net Balance</p>
                 <p className={`text-sm font-black mt-0.5 ${closingBalance >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                  ₹{Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} {balanceType}
+                  ₹{Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} {closingBalance >= 0 ? 'CR (Jama)' : 'DR (Lena)'}
                 </p>
               </div>
             </div>
@@ -693,8 +617,8 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
                 <th className="py-2.5 px-3">#</th>
                 <th className="py-2.5 px-3">Date</th>
                 <th className="py-2.5 px-3">Particulars & Calculation</th>
-                <th className="py-2.5 px-3 text-right">Debit (DR ₹)</th>
-                <th className="py-2.5 px-3 text-right">Credit (CR ₹)</th>
+                <th className="py-2.5 px-3 text-right">Debit (DR - Lena ₹)</th>
+                <th className="py-2.5 px-3 text-right">Credit (CR - Jama ₹)</th>
                 <th className="py-2.5 px-3 text-right">Balance (₹)</th>
               </tr>
             </thead>
@@ -706,8 +630,14 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
                     {t.transaction_date ? new Date(t.transaction_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : (t.created_at ? new Date(t.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '-')}
                   </td>
                   <td className="py-2 px-3 font-semibold text-slate-800">
-                    <span className="font-bold">{t.partner_party_name || companyName}</span>
-                    {t.remarks && (
+                    {t.is_settlement ? (
+                      <span className="font-extrabold text-indigo-700 uppercase tracking-wide">
+                        {isLofferUser ? 'FINAL SETTLEMENT' : 'MONDAY FINAL SETTLEMENT'}
+                      </span>
+                    ) : (
+                      <span className="font-bold">{t.partner_party_name || companyName}</span>
+                    )}
+                    {t.remarks && !t.remarks.toUpperCase().includes('FINAL SETTLEMENT') && (
                       <span className="ml-1 text-slate-500 font-medium">
                         {t.remarks.startsWith('(') ? t.remarks : `(${t.remarks})`}
                       </span>
@@ -720,7 +650,7 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
                     {t.credit > 0 ? `₹${Math.round(t.credit).toLocaleString('en-IN')}` : '-'}
                   </td>
                   <td className="py-2 px-3 text-right font-black text-slate-900 whitespace-nowrap">
-                    ₹{Math.abs(Math.round(t.balance)).toLocaleString('en-IN')} {t.balance >= 0 ? 'CR' : 'DR'}
+                    ₹{Math.abs(Math.round(t.balance)).toLocaleString('en-IN')} {t.balance >= 0 ? 'CR (Jama)' : 'DR (Lena)'}
                   </td>
                 </tr>
               ))}
@@ -740,17 +670,17 @@ export const WhatsAppReportModal: React.FC<WhatsAppReportModalProps> = ({
 
             <div className="bg-slate-100 p-4 rounded-2xl border border-slate-300 space-y-1.5 text-right">
               <div className="flex justify-between text-xs font-bold text-slate-600">
-                <span>Total Debit:</span>
+                <span>Total Debit (Lena):</span>
                 <span className="text-rose-600">₹{Math.abs(Math.round(totalDebit)).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-xs font-bold text-slate-600">
-                <span>Total Credit:</span>
+                <span>Total Credit (Jama):</span>
                 <span className="text-emerald-600">₹{Math.round(totalCredit).toLocaleString('en-IN')}</span>
               </div>
               <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-300">
                 <span>Net Closing Balance:</span>
                 <span className={closingBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                  ₹{Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} {closingBalance >= 0 ? 'CR' : 'DR'}
+                  ₹{Math.abs(Math.round(closingBalance)).toLocaleString('en-IN')} {closingBalance >= 0 ? 'CR (Jama)' : 'DR (Lena)'}
                 </span>
               </div>
             </div>
